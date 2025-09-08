@@ -1,16 +1,29 @@
-// src/lib/supabase/server.ts
-import { createClient } from '@supabase/supabase-js'
+// lib/supabase/server.ts
+import { cookies } from "next/headers";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
 /**
- * Cliente para el servidor o scripts locales.
- * Usa la service_role key -> nunca exponer en el cliente.
+ * Cliente de Supabase para usar en el SERVIDOR (rutas/acciones del App Router).
+ * Gestiona cookies de sesión de forma segura.
  */
-export const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,   // URL del proyecto
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,  // service_role key
-  {
-    auth: {
-      persistSession: false,
-    },
-  }
-)
+export function createClient() {
+  const cookieStore = cookies();
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          cookieStore.set({ name, value, ...options });
+        },
+        remove(name: string, options: CookieOptions) {
+          cookieStore.set({ name, value: "", ...options });
+        },
+      },
+    }
+  );
+}

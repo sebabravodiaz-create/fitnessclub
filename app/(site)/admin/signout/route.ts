@@ -1,9 +1,17 @@
-// app/admin/signout/route.ts
+// app/(site)/admin/signout/route.ts
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "../../../lib/supabaseServer";
+import { createClient } from "@/lib/supabase/server";
 
-export async function POST() {
-  const supabase = getSupabaseServer();
+// Cierre de sesión vía POST (botón/formulario)
+export async function POST(req: Request) {
+  const supabase = createClient();
   await supabase.auth.signOut();
-  return NextResponse.redirect(new URL("/login", process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"));
+  return NextResponse.redirect(new URL("/login", req.url));
+}
+
+// (Opcional) Cierre de sesión vía GET (enlace)
+export async function GET(req: Request) {
+  const supabase = createClient();
+  await supabase.auth.signOut();
+  return NextResponse.redirect(new URL("/login", req.url));
 }
