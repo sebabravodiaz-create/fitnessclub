@@ -1,0 +1,59 @@
+Listado de rutas de carpetas para el volumen Acer
+El número de serie del volumen es 7292-BCC3
+C:\GYM\APP
+¦   Elimnar login.bat
+¦   Estructura APP.bat
+¦   estructura_app.txt
+¦   globals.css
+¦   layout.tsx
+¦   
++---(site)
+¦   ¦   layout.tsx
+¦   ¦   page.tsx
+¦   ¦   
+¦   +---admin
+¦   ¦   ¦   layout.tsx
+¦   ¦   ¦   page.tsx
+¦   ¦   ¦   
+¦   ¦   +---athletes
+¦   ¦   ¦   ¦   page.tsx
+¦   ¦   ¦   ¦   table-client.tsx
+¦   ¦   ¦   ¦   
+¦   ¦   ¦   +---new
+¦   ¦   ¦   ¦       page.tsx
+¦   ¦   ¦   ¦       
+¦   ¦   ¦   +---[id]
+¦   ¦   ¦           page.tsx
+¦   ¦   ¦           
+¦   ¦   +---routines
+¦   ¦   ¦       page.tsx
+¦   ¦   ¦       
+¦   ¦   +---signout
+¦   ¦           route.ts
+¦   ¦           
+¦   +---rutinas
+¦           page.tsx
+¦           
++---admin-entry
+¦       page.tsx
+¦       
++---api
+¦   +---access
+¦   ¦   +---validate
+¦   ¦           route.ts
+¦   ¦           
+¦   +---debug
+¦       +---cards
+¦               route.ts
+¦               
++---kiosk
+¦       layout.tsx
+¦       page.tsx
+¦       
++---login
+¦       layout.tsx
+¦       page.tsx
+¦       
++---routines
+        page.tsx
+        
