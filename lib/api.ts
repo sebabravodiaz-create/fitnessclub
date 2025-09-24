@@ -1,6 +1,13 @@
 import type { RequestInit } from 'next/dist/server/web/spec-extension/request'
 
-const BASE = process.env.NEXT_PUBLIC_API_BASE_URL!
+const BASE = process.env.NEXT_PUBLIC_API_BASE_URL
+
+function getBaseUrl() {
+  if (!BASE) {
+    throw new Error('Falta NEXT_PUBLIC_API_BASE_URL en .env.local (ej: http://localhost:4001)')
+  }
+  return BASE
+}
 
 function authHeaders(admin = false) {
   const h: Record<string,string> = { 'Content-Type': 'application/json' }
@@ -10,7 +17,8 @@ function authHeaders(admin = false) {
 }
 
 async function http<T>(path: string, init: RequestInit = {}, admin = false): Promise<T> {
-  const res = await fetch(`${BASE}${path}`,
+  const baseUrl = getBaseUrl()
+  const res = await fetch(`${baseUrl}${path}`,
     { ...init, headers: { ...authHeaders(admin), ...(init.headers as any) }, cache: 'no-store' })
   if (!res.ok) throw new Error(`[${res.status}] ${await res.text()}`)
   return res.json() as Promise<T>
@@ -32,12 +40,4 @@ export const api = {
     listByUser: (userId: string) => http<Array<{ id:string; name:string; url:string; created_at:string }>>(`/routines/user/${userId}`),
     uploadSignedUrl: (fileName: string, userId: string) => http<{ uploadUrl:string; publicUrl:string }>(`/routines/upload-url`, { method: 'POST', body: JSON.stringify({ fileName, userId }) }, true),
   },
-}
-
-const BASE = process.env.NEXT_PUBLIC_API_BASE_URL
-async function http<T>(path: string, init: RequestInit = {}, admin = false): Promise<T> {
-  if (!BASE) throw new Error('Falta NEXT_PUBLIC_API_BASE_URL en .env.local (ej: http://localhost:4001)')
-  const res = await fetch(`${BASE}${path}`, { ...init, headers: { /* ... */ }, cache: 'no-store' })
-  if (!res.ok) throw new Error(`[${res.status}] ${await res.text()}`)
-  return res.json() as Promise<T>
 }

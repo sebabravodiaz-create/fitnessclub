@@ -1,11 +1,13 @@
-// lib/auth.ts
-import { supabase } from '@/lib/supabaseClient'
+'use client'
+
+import { getSupabaseBrowserClient } from '@/lib/supabaseClient'
 import { api } from '@/lib/api'
 
 const MODE = (process.env.API_AUTH_MODE || 'supabase') as 'supabase' | 'mid'
 
 export async function loginAdmin(email: string, password: string) {
   if (MODE === 'supabase') {
+    const supabase = getSupabaseBrowserClient()
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
     return { ok: true }
@@ -24,6 +26,7 @@ export async function loginAdmin(email: string, password: string) {
 
 export async function requestOtp(payload: { email?: string; phone?: string }) {
   if (MODE === 'supabase') {
+    const supabase = getSupabaseBrowserClient()
     if (payload.email) {
       const { error } = await supabase.auth.signInWithOtp({
         email: payload.email,
@@ -44,6 +47,7 @@ export async function requestOtp(payload: { email?: string; phone?: string }) {
 
 export async function verifyOtp(payload: { email?: string; phone?: string; code?: string }) {
   if (MODE === 'supabase') {
+    const supabase = getSupabaseBrowserClient()
     const { data: { user } } = await supabase.auth.getUser()
     return { token: 'supabase', user }
   }

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabaseClient'
+import { getSupabaseServerClient } from '@/lib/supabaseServerClient'
+
+export const runtime = 'nodejs'
 
 export async function POST(req: Request) {
   try {
@@ -8,34 +10,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, result: 'missing_uid' }, { status: 400 })
     }
 
+    const supabase = getSupabaseServerClient()
     const cleanedUID = cardUID.replace(/^0+/, '')
 
-    // Buscar tarjeta
-    const { data: card } = await supabase
+    const { data: card, error: cardError } = await supabase
       .from('cards')
       .select('id, uid, active, athlete_id')
       .eq('uid', cleanedUID)
       .eq('active', true)
       .maybeSingle()
 
+    if (cardError) {
+      console.error('Error consultando tarjeta', cardError)
+      return NextResponse.json({ ok: false, result: 'error' }, { status: 500 })
+    }
+
     if (!card) {
       return NextResponse.json({ ok: true, result: 'unknown_card', uid: cleanedUID })
     }
 
-    // Buscar atleta
-    const { data: athlete } = await supabase
+    const { data: athlete, error: athleteError } = await supabase
       .from('athletes')
       .select('id, name')
       .eq('id', card.athlete_id)
       .maybeSingle()
 
+    if (athleteError) {
+      console.error('Error consultando atleta', athleteError)
+      return NextResponse.json({ ok: false, result: 'error' }, { status: 500 })
+    }
+
     if (!athlete) {
       return NextResponse.json({ ok: true, result: 'unknown_card', uid: cleanedUID })
     }
 
-    // Buscar membresía más reciente
     const today = new Date().toISOString().split('T')[0]
-    const { data: membership } = await supabase
+    const { data: membership, error: membershipError } = await supabase
       .from('memberships')
       .select('id, plan, end_date, status')
       .eq('athlete_id', athlete.id)
@@ -43,42 +53,42 @@ export async function POST(req: Request) {
       .limit(1)
       .maybeSingle()
 
-    // Si no hay membresía en absoluto
+    if (membershipError) {
+      console.error('Error consultando membresía', membershipError)
+      return NextResponse.json({ ok: false, result: 'error' }, { status: 500 })
+    }
+
     if (!membership) {
       return NextResponse.json({
         ok: true,
         result: 'expired',
         uid: cleanedUID,
         athlete,
-        membership: null
+        membership: null,
       })
     }
 
-    // Normalizar status (activo/active)
     const status = (membership.status || '').toLowerCase()
-
-    // Si ya expiró o no está activa
-    if (status !== 'active' && status !== 'activo' || membership.end_date < today) {
+    if ((status !== 'active' && status !== 'activo') || membership.end_date < today) {
       return NextResponse.json({
         ok: true,
         result: 'expired',
         uid: cleanedUID,
         athlete,
-        membership // 👈 siempre devolvemos el objeto, con end_date
+        membership,
       })
     }
 
-    // Vigente
     return NextResponse.json({
       ok: true,
       result: 'allowed',
       uid: cleanedUID,
       athlete,
-      membership
+      membership,
     })
-
   } catch (err) {
-    console.error("Error en /api/access/validate", err)
+    console.error('Error en /api/access/validate', err)
     return NextResponse.json({ ok: false, result: 'error' }, { status: 500 })
   }
 }
+

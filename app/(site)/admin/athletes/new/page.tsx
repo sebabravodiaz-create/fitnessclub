@@ -3,7 +3,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabaseClient'
+import { getSupabaseBrowserClient } from '@/lib/supabaseClient'
 
 type Plan = 'Mensual' | 'Anual'
 
@@ -49,6 +49,7 @@ export default function AthleteNewPage() {
       if (!rfid.trim()) throw new Error('RFID es obligatorio')
 
       // Verificar RFID único (usa maybeSingle ✅)
+      const supabase = getSupabaseBrowserClient()
       const { data: existing, error: checkErr } = await supabase
         .from('cards')
         .select('id, athlete_id')

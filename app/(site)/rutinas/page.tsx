@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabaseClient'
+import { getSupabaseBrowserClient } from '@/lib/supabaseClient'
 
 type Row = { name: string; url: string }
 
@@ -13,6 +13,7 @@ export default function RutinasPage() {
 
   // Si ya hay sesión, salta directo a la lista
   useEffect(() => {
+    const supabase = getSupabaseBrowserClient()
     supabase.auth.getUser().then(({ data }) => {
       const u = data.user
       if (u?.id) {
@@ -26,6 +27,7 @@ export default function RutinasPage() {
   const signInWithEmailOtp = async () => {
     setMessage('')
     if (!email) return setMessage('Escribe tu correo')
+    const supabase = getSupabaseBrowserClient()
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: window.location.origin + '/rutinas' }
@@ -35,6 +37,7 @@ export default function RutinasPage() {
   }
 
   const listFiles = async (uid: string) => {
+    const supabase = getSupabaseBrowserClient()
     const { data, error } = await supabase.storage.from('rutinas').list(uid, {
       limit: 100, offset: 0, sortBy: { column: 'name', order: 'desc' }
     })

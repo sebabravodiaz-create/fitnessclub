@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabaseClient'
+import { getSupabaseServerClient } from '@/lib/supabaseServerClient'
+
+export const runtime = 'nodejs'
 
 export async function GET() {
   try {
-    console.log("DEBUG - Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL)
+    const supabase = getSupabaseServerClient()
 
     const { data, error } = await supabase
       .from('cards')
@@ -12,18 +14,19 @@ export async function GET() {
       .limit(10)
 
     if (error) {
-      console.error("DEBUG - error al consultar cards:", error)
-      return NextResponse.json({ ok: false, error })
+      console.error('DEBUG - error al consultar cards:', error)
+      return NextResponse.json({ ok: false, error }, { status: 500 })
     }
 
     return NextResponse.json({
       ok: true,
-      supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
       count: data?.length || 0,
-      cards: data
+      cards: data,
     })
   } catch (err) {
-    console.error("DEBUG - error general en /api/debug/cards:", err)
+    console.error('DEBUG - error general en /api/debug/cards:', err)
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 })
   }
 }
+

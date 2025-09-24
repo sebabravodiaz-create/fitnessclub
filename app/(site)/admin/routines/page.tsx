@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { supabase } from '@/lib/supabaseClient'
+import { getSupabaseBrowserClient } from '@/lib/supabaseClient'
 import { useRouter } from 'next/navigation'
 
 type FileRow = { name: string; url: string; created_at?: string }
@@ -19,6 +19,7 @@ export default function RoutinesAdminPage() {
   const listAllFiles = async () => {
     setStatus('Cargando todos los archivos…')
 
+    const supabase = getSupabaseBrowserClient()
     const { data: folders, error } = await supabase.storage.from('routines-public').list('', {
       limit: 1000,
     })
@@ -55,6 +56,7 @@ export default function RoutinesAdminPage() {
     const path = `general/${file.name}`
 
     setStatus('Subiendo…')
+    const supabase = getSupabaseBrowserClient()
     const { error } = await supabase.storage.from('routines-public').upload(path, file, {
       cacheControl: '3600',
       upsert: true, // permite reemplazar si ya existe
@@ -70,6 +72,7 @@ export default function RoutinesAdminPage() {
 
   const removeFile = async (path: string) => {
     setStatus(`Eliminando ${path}…`)
+    const supabase = getSupabaseBrowserClient()
     const { error } = await supabase.storage.from('routines-public').remove([path])
     if (error) { setStatus(`Error: ${error.message}`); return }
     setStatus('Archivo eliminado ✔️')

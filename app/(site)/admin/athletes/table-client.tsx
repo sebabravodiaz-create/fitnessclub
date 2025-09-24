@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabaseClient'
+import { getSupabaseBrowserClient } from '@/lib/supabaseClient'
 import Link from 'next/link'
 
 type EmbeddedCard = { uid: string | null; active?: boolean | null; created_at?: string | null }
@@ -25,6 +25,7 @@ export default function AthletesClient() {
   const load = async () => {
     setLoading(true)
     try {
+      const supabase = getSupabaseBrowserClient()
       let query = supabase
         .from('athletes')
         .select(`
@@ -77,6 +78,7 @@ export default function AthletesClient() {
 
   const remove = async (id: string) => {
     if (!confirm('¿Eliminar este atleta?')) return
+    const supabase = getSupabaseBrowserClient()
     const { error } = await supabase.from('athletes').delete().eq('id', id)
     if (error) { alert(error.message); return }
     load()

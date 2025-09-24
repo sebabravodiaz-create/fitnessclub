@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabaseClient'
+import { getSupabaseBrowserClient } from '@/lib/supabaseClient'
 
 type Athlete = {
   id: string
@@ -71,6 +71,8 @@ export default function AthleteEditPage() {
   async function loadAll() {
     setLoading(true)
     setMsg(null)
+
+    const supabase = getSupabaseBrowserClient()
 
     // 1) Atleta
     const { data: a, error: aErr } = await supabase
@@ -143,6 +145,7 @@ export default function AthleteEditPage() {
     if (!ath) return
     setBusy(true); setMsg(null)
 
+    const supabase = getSupabaseBrowserClient()
     const { error } = await supabase
       .from('athletes')
       .update({
@@ -165,6 +168,8 @@ export default function AthleteEditPage() {
     if (!uid) { setMsg('RFID no puede estar vacío.'); return }
 
     setBusy(true); setMsg(null)
+
+    const supabase = getSupabaseBrowserClient()
 
     // 1) Desactivar cualquier tarjeta activa anterior
     const { error: deactErr } = await supabase
@@ -190,6 +195,8 @@ export default function AthleteEditPage() {
     if (!memStart || !memEnd) { setMsg('Debes indicar fechas de inicio y fin.'); return }
 
     setBusy(true); setMsg(null)
+
+    const supabase = getSupabaseBrowserClient()
 
     // 1) Expirar cualquier membresía activa
     const { error: expErr } = await supabase
@@ -226,6 +233,7 @@ export default function AthleteEditPage() {
     }
     setBusy(true); setMsg(null)
     try {
+      const supabase = getSupabaseBrowserClient()
       // 0) Quitar relación en access_logs (athlete_id es NULLABLE)
       const { error: logsNullErr } = await supabase
         .from('access_logs')
