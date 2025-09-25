@@ -23,3 +23,4 @@ export function getSupabaseServer(): SupabaseClient {
     }
   )
 }
+
