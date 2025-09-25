@@ -2,10 +2,8 @@
 import { useEffect, useRef, useState } from 'react'
 
 type AccessResult = {
-  name: string
   uid: string
-  membership?: string
-  endDate?: string
+  membershipEndsAt?: string | null
   status: 'allowed' | 'expired' | 'unknown_card'
 }
 
@@ -24,7 +22,7 @@ export default function KioskPage() {
   const [message, setMessage] = useState<string>('Acerca la tarjeta...')
   const [lastUID, setLastUID] = useState<string>('')   
   const [lastEndDate, setLastEndDate] = useState<string>('')   
-  const [history, setHistory] = useState<AccessResult[]>([]) 
+  const [history, setHistory] = useState<AccessResult[]>([])
   const bufferRef = useRef<string>('') 
   const timeoutRef = useRef<any>(null)  
 
@@ -79,24 +77,20 @@ export default function KioskPage() {
 
       if (data.ok && data.result === 'allowed') {
         setStatus('ok')
-        setMessage(`✅ ACCESO PERMITIDO\n${data.athlete.name}`)
+        setMessage('✅ ACCESO PERMITIDO')
         setLastEndDate(data.membership?.end_date || '')
         addToHistory({
-          name: data.athlete.name,
           uid: data.uid,
-          membership: 'Vigente',
-          endDate: data.membership?.end_date,
+          membershipEndsAt: data.membership?.end_date,
           status: 'allowed'
         })
       } else if (data.result === 'expired') {
         setStatus('fail')
-        setMessage(`⚠️ MEMBRESÍA EXPIRADA\n${data.athlete?.name || ''}`)
+        setMessage('⚠️ MEMBRESÍA EXPIRADA')
         setLastEndDate(data.membership?.end_date || '')
         addToHistory({
-          name: data.athlete?.name || 'Desconocido',
           uid: data.uid,
-          membership: 'Expirada',
-          endDate: data.membership?.end_date,
+          membershipEndsAt: data.membership?.end_date,
           status: 'expired'
         })
       } else {
@@ -104,9 +98,7 @@ export default function KioskPage() {
         setMessage(`❌ TARJETA DESCONOCIDA\nUID: ${data.uid}`)
         setLastEndDate('')
         addToHistory({
-          name: 'Desconocido',
           uid: data.uid,
-          membership: 'N/A',
           status: 'unknown_card'
         })
       }
@@ -173,12 +165,11 @@ export default function KioskPage() {
                 h.status === 'allowed' ? 'bg-green-100' : 'bg-red-100'
               ].join(' ')}
             >
-              <p className="font-semibold">{h.name}</p>
-              <p className="text-sm text-gray-700">Tarjeta: {h.uid}</p>
-              <p className="text-sm text-gray-700">Membresía: {h.membership}</p>
-              {h.endDate && (
+              <p className="font-semibold">UID: {h.uid}</p>
+              <p className="text-sm text-gray-700 capitalize">Estado: {h.status.replace('_', ' ')}</p>
+              {h.membershipEndsAt && (
                 <p className="text-sm text-gray-500">
-                  Vence: {formatDate(h.endDate)}
+                  Vence: {formatDate(h.membershipEndsAt)}
                 </p>
               )}
             </div>

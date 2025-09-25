@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
+
 import { getServiceRoleClient, getServiceRoleConfig } from '@/lib/supabase/service-role'
+import { userHasRole } from '@/lib/auth/roles'
 
 type CardRow = {
   id: string
@@ -34,6 +38,62 @@ export async function POST(req: Request) {
         },
         { status: 503 },
       )
+    }
+
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!anonKey) {
+      console.error('Error en /api/access/validate: falta NEXT_PUBLIC_SUPABASE_ANON_KEY')
+      return NextResponse.json(
+        {
+          ok: false,
+          result: 'missing_supabase_config',
+          missing: ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'],
+        },
+        { status: 503 },
+      )
+    }
+
+    const cookieStore = cookies()
+    const authClient = createServerClient(config.url, anonKey, {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options) {
+          cookieStore.set({ name, value, ...options })
+        },
+        remove(name: string, options) {
+          cookieStore.set({ name, value: '', ...options })
+        },
+      },
+    })
+
+    const {
+      data: { user },
+      error: authError,
+    } = await authClient.auth.getUser()
+
+    if (authError) {
+      console.error('Error en /api/access/validate: sesión inválida', authError)
+      return NextResponse.json({ ok: false, result: 'unauthorized' }, { status: 401 })
+    }
+
+    const pathname = new URL(req.url).pathname
+    const isKioskRoute = pathname.startsWith('/api/access/validate')
+
+    if (!user) {
+      return NextResponse.json({ ok: false, result: 'unauthorized' }, { status: 401 })
+    }
+
+    const isAdmin = userHasRole(user, 'admin')
+    const isKiosk = userHasRole(user, ['admin', 'kiosk'])
+
+    const isAdminRouteAllowed = pathname.startsWith('/api/access') && isAdmin
+    const isKioskRoleAllowed = isKioskRoute && isKiosk
+
+    if (!isAdminRouteAllowed && !isKioskRoleAllowed) {
+      return NextResponse.json({ ok: false, result: 'forbidden' }, { status: 403 })
     }
 
     const supabase = getServiceRoleClient(config)
@@ -87,8 +147,7 @@ export async function POST(req: Request) {
         ok: true,
         result: 'expired',
         uid: cleanedUID,
-        athlete,
-        membership: null
+        membership: null,
       })
     }
 
@@ -96,13 +155,12 @@ export async function POST(req: Request) {
     const status = (membership.status || '').toLowerCase()
 
     // Si ya expiró o no está activa
-    if (status !== 'active' && status !== 'activo' || membership.end_date < today) {
+    if ((status !== 'active' && status !== 'activo') || membership.end_date < today) {
       return NextResponse.json({
         ok: true,
         result: 'expired',
         uid: cleanedUID,
-        athlete,
-        membership // 👈 siempre devolvemos el objeto, con end_date
+        membership: { end_date: membership.end_date },
       })
     }
 
@@ -111,8 +169,7 @@ export async function POST(req: Request) {
       ok: true,
       result: 'allowed',
       uid: cleanedUID,
-      athlete,
-      membership
+      membership: { end_date: membership.end_date },
     })
 
   } catch (err) {

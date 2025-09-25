@@ -2,9 +2,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
+import { userHasRole } from "@/lib/auth/roles";
+
 export async function middleware(req: NextRequest) {
-  // Solo protege rutas que empiecen con /admin
-  if (!req.nextUrl.pathname.startsWith("/admin")) {
+  const pathname = req.nextUrl.pathname
+
+  const isAdminPath = pathname.startsWith("/admin")
+  const isKioskPath = pathname.startsWith("/kiosk")
+
+  if (!isAdminPath && !isKioskPath) {
     return NextResponse.next();
   }
 
@@ -33,7 +39,22 @@ export async function middleware(req: NextRequest) {
   // Si no hay sesión, redirige a /login?next=/admin...
   if (!session) {
     const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("next", req.nextUrl.pathname);
+    loginUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  const isAdmin = userHasRole(session.user, "admin");
+  const isKiosk = userHasRole(session.user, ["admin", "kiosk"]);
+
+  if (isAdminPath && !isAdmin) {
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("next", "/admin");
+    return NextResponse.redirect(loginUrl);
+  }
+
+  if (isKioskPath && !isKiosk) {
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("next", "/kiosk");
     return NextResponse.redirect(loginUrl);
   }
 
@@ -41,5 +62,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*"], // aplica solo a /admin/*
+  matcher: ["/admin/:path*", "/kiosk", "/kiosk/:path*"], // aplica a /admin/* y /kiosk
 };
