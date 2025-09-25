@@ -1,18 +1,25 @@
 // app/layout.tsx
-import type { Metadata } from 'next'
-import './globals.css'
+import "./globals.css";
+import type { Metadata } from "next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
-  title: 'Fitness Club Grulla Blanca',
-  description: 'Control de acceso y rutinas',
-}
+  title: "Aplicación GYM",
+  description: "App con métricas de rendimiento (Vercel Speed Insights)",
+};
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="es">
-      <body className="min-h-screen bg-gray-50">
+      <body>
         {children}
+        {/* 👇 Este componente envía las métricas a Vercel */}
+        <SpeedInsights />
       </body>
     </html>
-  )
+  );
 }
