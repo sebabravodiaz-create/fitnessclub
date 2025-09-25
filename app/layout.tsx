@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
-  title: "Aplicación GYM",
+  title: "FitnessClub Grulla Blanca",
   description: "App con métricas de rendimiento (Vercel Speed Insights)",
 };
 
