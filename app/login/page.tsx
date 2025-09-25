@@ -102,7 +102,7 @@ function LoginForm() {
         Correo electrónico
         <input
           type="email"
-          placeholder="tuejemplo@grullablanca.com"
+          placeholder="ejemplo@mail.com"
           autoComplete="email"
           className="w-full rounded-lg border border-gray-200 px-3 py-2 text-base text-gray-900 shadow-sm outline-none transition focus:border-black focus:ring-2 focus:ring-black/10"
           value={email}
