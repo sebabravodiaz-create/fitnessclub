@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 
 import { getServiceRoleClient, getServiceRoleConfig } from '@/lib/supabase/service-role'
+import { userHasRole } from '@/lib/auth/roles'
 
 export async function GET() {
   const enabled = process.env.ENABLE_DEBUG_ENDPOINT === 'true'
@@ -63,14 +64,7 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
     }
 
-    const role =
-      typeof user.app_metadata?.role === 'string'
-        ? user.app_metadata.role.toLowerCase()
-        : typeof user.user_metadata?.role === 'string'
-          ? user.user_metadata.role.toLowerCase()
-          : null
-
-    if (role !== 'admin') {
+    if (!userHasRole(user, 'admin')) {
       return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 })
     }
 

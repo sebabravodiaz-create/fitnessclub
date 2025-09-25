@@ -2,6 +2,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
+import { userHasRole } from "@/lib/auth/roles";
+
 export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname
 
@@ -41,20 +43,16 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const role =
-    typeof session.user.app_metadata?.role === "string"
-      ? session.user.app_metadata.role.toLowerCase()
-      : typeof session.user.user_metadata?.role === "string"
-        ? session.user.user_metadata.role.toLowerCase()
-        : null;
+  const isAdmin = userHasRole(session.user, "admin");
+  const isKiosk = userHasRole(session.user, ["admin", "kiosk"]);
 
-  if (isAdminPath && role !== "admin") {
+  if (isAdminPath && !isAdmin) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", "/admin");
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isKioskPath && role !== "admin" && role !== "kiosk") {
+  if (isKioskPath && !isKiosk) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", "/kiosk");
     return NextResponse.redirect(loginUrl);

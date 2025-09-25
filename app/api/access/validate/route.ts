@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 
 import { getServiceRoleClient, getServiceRoleConfig } from '@/lib/supabase/service-role'
+import { userHasRole } from '@/lib/auth/roles'
 
 type CardRow = {
   id: string
@@ -78,22 +79,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, result: 'unauthorized' }, { status: 401 })
     }
 
-    const role =
-      typeof user?.app_metadata?.role === 'string'
-        ? user?.app_metadata?.role.toLowerCase()
-        : typeof user?.user_metadata?.role === 'string'
-          ? user?.user_metadata?.role.toLowerCase()
-          : null
-
     const pathname = new URL(req.url).pathname
     const isKioskRoute = pathname.startsWith('/api/access/validate')
 
-    if (!user || !role) {
+    if (!user) {
       return NextResponse.json({ ok: false, result: 'unauthorized' }, { status: 401 })
     }
 
-    const isAdminRouteAllowed = pathname.startsWith('/api/access') && role === 'admin'
-    const isKioskRoleAllowed = isKioskRoute && (role === 'admin' || role === 'kiosk')
+    const isAdmin = userHasRole(user, 'admin')
+    const isKiosk = userHasRole(user, ['admin', 'kiosk'])
+
+    const isAdminRouteAllowed = pathname.startsWith('/api/access') && isAdmin
+    const isKioskRoleAllowed = isKioskRoute && isKiosk
 
     if (!isAdminRouteAllowed && !isKioskRoleAllowed) {
       return NextResponse.json({ ok: false, result: 'forbidden' }, { status: 403 })
