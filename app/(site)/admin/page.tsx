@@ -46,6 +46,11 @@ export default function AdminHome() {
           title="Rutinas"
           subtitle="Subir y administrar PDFs públicos"
         />
+        <Tile
+          href="/admin/reports"
+          title="Reportes"
+          subtitle="Descarga de accesos, membresías y más"
+        />
       </div>
     </main>
   )
