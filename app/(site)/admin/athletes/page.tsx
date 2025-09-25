@@ -1,5 +1,7 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import AthletesClient from './table-client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'

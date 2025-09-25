@@ -3,6 +3,7 @@ import Image from 'next/image'
 import { useState } from 'react'
 import AccessButtons from '@/components/AccessButtons'
 import IGGrid from '@/components/IGGrid'
+import WhatsAppSticky from '@/components/WhatsAppSticky'
 
 function HeroImage() {
   const [src, setSrc] = useState('/images/hero.png')
@@ -80,6 +81,8 @@ export default function HomePage() {
           </p>
         </div>
       </section>
+
+      <WhatsAppSticky />
     </>
   )
 }
