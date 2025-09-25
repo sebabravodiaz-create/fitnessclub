@@ -1,10 +1,22 @@
 'use client'
 
-import { useState } from 'react'
+export const dynamic = 'force-dynamic'
+
+import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
 export default function LoginPage() {
+  return (
+    <main className="min-h-screen flex items-center justify-center bg-gray-50">
+      <Suspense fallback={<p className="p-6">Cargando…</p>}>
+        <LoginForm />
+      </Suspense>
+    </main>
+  )
+}
+
+function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -22,7 +34,6 @@ export default function LoginPage() {
       if (error) { setError(error.message); return }
       if (!data?.user) { setError('No se pudo iniciar sesión, revisa tus credenciales.'); return }
 
-      // ✅ Marca de acceso admin por 1 hora
       document.cookie = `admin_entry=1; Max-Age=3600; Path=/admin; SameSite=Lax`
 
       const next = sp.get('next')
@@ -41,7 +52,6 @@ export default function LoginPage() {
 
   return (
     <div className="w-full max-w-md bg-white p-6 rounded-xl shadow relative">
-      {/* Botón volver al home arriba */}
       <div className="flex mb-4">
         <button
           onClick={() => router.push('/')}
