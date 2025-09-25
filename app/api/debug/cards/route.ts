@@ -1,8 +1,23 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabaseClient'
+import { getServiceRoleClient, getServiceRoleConfig } from '@/lib/supabase/service-role'
 
 export async function GET() {
   try {
+    const config = getServiceRoleConfig()
+
+    if (!config) {
+      console.warn('DEBUG - faltan NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY')
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'missing_supabase_config',
+          missing: ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'],
+        },
+        { status: 503 },
+      )
+    }
+
+    const supabase = getServiceRoleClient(config)
     console.log("DEBUG - Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL)
 
     const { data, error } = await supabase
