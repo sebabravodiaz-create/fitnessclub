@@ -61,6 +61,12 @@ create table if not exists public.routine_assignments (
   notes text
 );
 
+create table if not exists public.app_settings (
+  key text primary key,
+  value jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
 -- RLS
 alter table public.routines enable row level security;
 create policy if not exists "Public can read public routines"
@@ -72,6 +78,7 @@ alter table public.athletes enable row level security;
 alter table public.cards enable row level security;
 alter table public.memberships enable row level security;
 alter table public.access_logs enable row level security;
+alter table public.app_settings enable row level security;
 
 create policy if not exists "Admins only athletes"
 on public.athletes for all to authenticated using (true) with check (true);
@@ -84,3 +91,6 @@ on public.memberships for all to authenticated using (true) with check (true);
 
 create policy if not exists "Admins only access_logs"
 on public.access_logs for all to authenticated using (true) with check (true);
+
+create policy if not exists "Admins only app settings"
+on public.app_settings for all to authenticated using (true) with check (true);

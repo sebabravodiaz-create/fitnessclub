@@ -1,6 +1,8 @@
 // app/api/access/validate/route.ts
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { startOfChileDay, toChileDateString, toChileISOString } from '@/lib/chileTime'
+import { loadAndApplyAppSettings } from '@/lib/appSettings.server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -28,13 +30,13 @@ function getServerClient() {
   return createClient(url, key, { auth: { persistSession: false } })
 }
 
-function todayUTCDateOnly(): Date {
-  const now = new Date()
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+function todayChileDateOnly(): Date {
+  return startOfChileDay(new Date())
 }
 
 export async function POST(req: NextRequest) {
   try {
+    await loadAndApplyAppSettings()
     const supabase = getServerClient()
     const body = await req.json().catch(() => ({} as any))
 
@@ -45,7 +47,7 @@ export async function POST(req: NextRequest) {
       return Response.json({ ok: false, error: 'cardUID requerido' }, { status: 400 })
     }
 
-    const today = todayUTCDateOnly()
+    const today = todayChileDateOnly()
 
     // 1) Buscar tarjeta activa
     const { data: card, error: cardErr } = await supabase
@@ -85,20 +87,27 @@ export async function POST(req: NextRequest) {
 
       const activeMems = (mems ?? []).filter(m => (m.status ?? 'active') === 'active')
       const covering = activeMems.find(m => {
-        const start = new Date(m.start_date)
-        const end = new Date(m.end_date)
+        if (!m.start_date || !m.end_date) return false
+        const start = startOfChileDay(m.start_date)
+        const end = startOfChileDay(m.end_date)
         return start <= today && today <= end
       })
 
       if (covering) {
         result = 'allowed'
-        membership = { plan: covering.plan ?? null, end_date: covering.end_date ?? null }
-      } else if (activeMems.some(m => new Date(m.end_date) < today)) {
+        membership = {
+          plan: covering.plan ?? null,
+          end_date: covering.end_date ? toChileDateString(covering.end_date) : null,
+        }
+      } else if (activeMems.some(m => m.end_date && startOfChileDay(m.end_date) < today)) {
         result = 'expired'
         const lastExpired = activeMems
-          .filter(m => new Date(m.end_date) < today)
+          .filter(m => m.end_date && startOfChileDay(m.end_date) < today)
           .sort((a, b) => (a.end_date < b.end_date ? 1 : -1))[0]
-        membership = { plan: lastExpired?.plan ?? null, end_date: lastExpired?.end_date ?? null }
+        membership = {
+          plan: lastExpired?.plan ?? null,
+          end_date: lastExpired?.end_date ? toChileDateString(lastExpired.end_date) : null,
+        }
       } else {
         result = 'denied'
       }
@@ -108,7 +117,7 @@ export async function POST(req: NextRequest) {
     const payload = {
       athlete_id: athlete?.id ?? null,
       card_uid: cleanedUID,
-      ts: new Date().toISOString(),
+      ts: toChileISOString(new Date()),
       result,
       note,
     }
@@ -127,7 +136,7 @@ export async function POST(req: NextRequest) {
     return Response.json({
       ok: result === 'allowed',
       access_id: inserted?.id ?? null,
-      ts: inserted?.ts ?? payload.ts,
+      ts: toChileISOString(inserted?.ts ?? payload.ts),
       result,
       uid: cleanedUID,
       athlete,

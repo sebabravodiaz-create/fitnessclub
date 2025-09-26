@@ -51,6 +51,11 @@ export default function AdminHome() {
           title="Reportes"
           subtitle="Descarga de accesos, membresías y más"
         />
+        <Tile
+          href="/admin/settings"
+          title="Configuración"
+          subtitle="Ajusta horarios y preferencias generales"
+        />
       </div>
     </main>
   )

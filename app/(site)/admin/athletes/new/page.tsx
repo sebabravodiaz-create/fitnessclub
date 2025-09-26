@@ -6,11 +6,12 @@ export const dynamic = 'force-dynamic'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import { fromChileDateOnly, toChileDateString } from '@/lib/chileTime'
 
 type Plan = 'Mensual' | 'Anual'
 
 function toISO(d: Date) {
-  return d.toISOString().slice(0,10)
+  return toChileDateString(d)
 }
 function addMonths(date: Date, months: number) {
   const d = new Date(date); d.setMonth(d.getMonth() + months); return d
@@ -26,19 +27,19 @@ export default function AthleteNewPage() {
 
   const [plan, setPlan] = useState<Plan>('Mensual')
   const [start, setStart] = useState<string>(toISO(new Date()))
-  const [end, setEnd] = useState<string>(toISO(addMonths(new Date(), 1)))
+  const [end, setEnd] = useState<string>(toISO(addMonths(fromChileDateOnly(toISO(new Date())), 1)))
 
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
   const onChangeStart = (v: string) => {
     setStart(v)
-    const base = v ? new Date(v) : new Date()
+    const base = v ? fromChileDateOnly(v) : new Date()
     setEnd(toISO(addMonths(base, plan === 'Anual' ? 12 : 1)))
   }
   const onChangePlan = (p: Plan) => {
     setPlan(p)
-    const base = start ? new Date(start) : new Date()
+    const base = start ? fromChileDateOnly(start) : new Date()
     setEnd(toISO(addMonths(base, p === 'Anual' ? 12 : 1)))
   }
 
