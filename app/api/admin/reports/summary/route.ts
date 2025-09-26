@@ -2,6 +2,8 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+type AccessStatus = 'allowed' | 'denied' | 'expired' | 'unknown_card'
+
 type SummaryRow = {
   periodo: string
   accesos_ok: number
@@ -90,12 +92,18 @@ export async function GET(req: NextRequest) {
       return byPeriod[p]
     }
 
+    const statusToSummaryField: Record<AccessStatus, 'accesos_ok' | 'accesos_nok' | 'accesos_unknown_card'> = {
+      allowed: 'accesos_ok',
+      denied: 'accesos_nok',
+      expired: 'accesos_nok',
+      unknown_card: 'accesos_unknown_card',
+    }
+
     for (const a of acc ?? []) {
       const p = ym(a.ts)
       const row = ensure(p)
-      if (a.result === 'ok') row.accesos_ok += 1
-      else if (a.result === 'nok') row.accesos_nok += 1
-      else row.accesos_unknown_card += 1
+      const status = statusToSummaryField[(a.result ?? 'unknown_card') as AccessStatus] || 'accesos_unknown_card'
+      row[status] += 1
     }
 
     for (const a of ath ?? []) ensure(ym(a.created_at)).nuevos_socios += 1

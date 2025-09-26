@@ -45,21 +45,22 @@ function parseDateRange(from?: string | null, to?: string | null) {
 }
 
 // 👇 Mapeo de alias (UI) → labels reales del enum
-const STATUS_MAP: Record<string, string> = {
+const STATUS_FILTERS: Record<string, string | string[]> = {
   ok: 'allowed',
-  nok: 'denied',
+  nok: ['denied', 'expired'],
+  denied: 'denied',
   expired: 'expired',
   unknown_card: 'unknown_card',
 }
 
-// GET /api/admin/reports/access?status=ok|nok|expired|unknown_card&from=YYYY-MM-DD&to=YYYY-MM-DD&limit=5000
+// GET /api/admin/reports/access?status=ok|nok|denied|expired|unknown_card&from=YYYY-MM-DD&to=YYYY-MM-DD&limit=5000
 export async function GET(req: NextRequest) {
   try {
     const supabase = getServerClient()
     const url = new URL(req.url)
 
     const requested = (url.searchParams.get('status') ?? '').toLowerCase().trim()
-    const mapped = requested && STATUS_MAP[requested] ? STATUS_MAP[requested] : null
+    const mapped = requested && STATUS_FILTERS[requested] ? STATUS_FILTERS[requested] : null
 
     const from = url.searchParams.get('from')
     const to = url.searchParams.get('to')
@@ -73,7 +74,8 @@ export async function GET(req: NextRequest) {
       .order('ts', { ascending: false })
       .limit(limit)
 
-    if (mapped) q = q.eq('result', mapped)
+    if (Array.isArray(mapped)) q = q.in('result', mapped)
+    else if (mapped) q = q.eq('result', mapped)
     if (isoFrom) q = q.gte('ts', isoFrom)
     if (isoTo) q = q.lte('ts', isoTo)
 
