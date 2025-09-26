@@ -2,9 +2,11 @@
 import { createBrowserClient } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-let browserClient: SupabaseClient | null = null
+import type { Database } from './supabase/types'
 
-export function getSupabaseBrowserClient(): SupabaseClient {
+let browserClient: SupabaseClient<Database> | null = null
+
+export function getSupabaseBrowserClient(): SupabaseClient<Database> {
   if (typeof window === 'undefined') {
     throw new Error('Supabase browser client solo puede usarse en el navegador')
   }
@@ -17,13 +19,13 @@ export function getSupabaseBrowserClient(): SupabaseClient {
       throw new Error('Faltan NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY')
     }
 
-    browserClient = createBrowserClient(url, anon)
+    browserClient = createBrowserClient<Database>(url, anon)
   }
 
   return browserClient
 }
 
-export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+export const supabase: SupabaseClient<any> = new Proxy({} as SupabaseClient<any>, {
   get(_target, prop, receiver) {
     const client = getSupabaseBrowserClient() as unknown as Record<PropertyKey, unknown>
     const value = Reflect.get(client, prop, receiver)

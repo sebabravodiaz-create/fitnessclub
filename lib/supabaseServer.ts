@@ -3,9 +3,11 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-export function getSupabaseServer(): SupabaseClient {
+import type { Database } from './supabase/types'
+
+export function getSupabaseServer(): SupabaseClient<Database> {
   const cookieStore = cookies()
-  return createServerClient(
+  return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {

@@ -81,6 +81,11 @@ export default function AthleteEditPage() {
       .eq('id', id)
       .maybeSingle()
     if (aErr) { setMsg(aErr.message); setLoading(false); return }
+    if (!a) {
+      setMsg('Atleta no encontrado')
+      setLoading(false)
+      return
+    }
     setAth(a as Athlete)
 
     // 2) Tarjeta activa

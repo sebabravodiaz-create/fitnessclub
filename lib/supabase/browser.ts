@@ -2,9 +2,11 @@
 import { createClient } from '@supabase/supabase-js'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-let client: SupabaseClient | null = null
+import type { Database } from './types'
 
-export function getSupabaseBrowser(): SupabaseClient {
+let client: SupabaseClient<Database> | null = null
+
+export function getSupabaseBrowser(): SupabaseClient<Database> {
   if (typeof window === 'undefined') {
     throw new Error('Supabase browser client solo puede usarse en el navegador')
   }
@@ -16,7 +18,7 @@ export function getSupabaseBrowser(): SupabaseClient {
       throw new Error('Faltan NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY')
     }
 
-    client = createClient(url, anon, {
+    client = createClient<Database>(url, anon, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
