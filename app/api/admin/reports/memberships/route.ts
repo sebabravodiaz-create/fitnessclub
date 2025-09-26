@@ -1,6 +1,12 @@
 // app/api/admin/reports/memberships/route.ts
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import {
+  chileDateRange,
+  formatChileDateTime,
+  startOfChileDay,
+  toChileDateString,
+} from '@/lib/chileTime'
 
 type Row = {
   socio: string
@@ -35,12 +41,6 @@ function getServerClient() {
   return createClient(url, key, { auth: { persistSession: false } })
 }
 
-function parseDateRange(from?: string | null, to?: string | null) {
-  const isoFrom = from ? new Date(`${from}T00:00:00.000Z`).toISOString() : null
-  const isoTo = to ? new Date(`${to}T23:59:59.999Z`).toISOString() : null
-  return { isoFrom, isoTo }
-}
-
 // GET /api/admin/reports/memberships?from=YYYY-MM-DD&to=YYYY-MM-DD&date_field=created_at|start_date|end_date&limit=10000
 export async function GET(req: NextRequest) {
   try {
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     const to = url.searchParams.get('to')
     const dateField = (url.searchParams.get('date_field') ?? 'created_at') as 'created_at' | 'start_date' | 'end_date'
     const limit = Math.min(Number(url.searchParams.get('limit')) || 10000, 50000)
-    const { isoFrom, isoTo } = parseDateRange(from, to)
+    const { isoFrom, isoTo } = chileDateRange(from, to)
 
     // Traer memberships + nombre del atleta
     let q = supabase
@@ -83,11 +83,15 @@ export async function GET(req: NextRequest) {
         if (!prev) {
           tipo = 'Nueva'
         } else if (m.plan === prev.plan) {
-          const prevEnd = new Date(prev.end_date).getTime()
-          const mStart = new Date(m.start_date).getTime()
-          // contiguo (1 día)
-          if (mStart === prevEnd + 24 * 60 * 60 * 1000) tipo = 'Renovación'
-          else tipo = 'Cambio de plan' // mismo plan pero con lag → lo tratamos como “cambio/otro”
+          if (!prev.end_date || !m.start_date) {
+            tipo = 'Cambio de plan'
+          } else {
+            const prevEnd = startOfChileDay(prev.end_date).getTime()
+            const mStart = startOfChileDay(m.start_date).getTime()
+            // contiguo (1 día)
+            if (mStart === prevEnd + 24 * 60 * 60 * 1000) tipo = 'Renovación'
+            else tipo = 'Cambio de plan' // mismo plan pero con lag → lo tratamos como “cambio/otro”
+          }
         } else {
           tipo = 'Cambio de plan'
         }
@@ -98,12 +102,12 @@ export async function GET(req: NextRequest) {
           socio: m.athletes?.name ?? '[sin nombre]',
           plan_nuevo: m.plan,
           plan_anterior: prev?.plan ?? null,
-          start_date: m.start_date,
-          end_date: m.end_date,
+          start_date: m.start_date ? toChileDateString(m.start_date) : '',
+          end_date: m.end_date ? toChileDateString(m.end_date) : '',
           status_registro: m.status ?? 'active',
           tipo_movimiento: tipo,
           estado_actual,
-          created_at: m.created_at ?? null,
+          created_at: m.created_at ? formatChileDateTime(m.created_at) : null,
         })
         prev = m
       }

@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import { formatChileDateTime } from '@/lib/chileTime'
 
 type AccessResult = {
   name: string
@@ -11,10 +12,13 @@ type AccessResult = {
 
 function formatDate(dateStr?: string) {
   if (!dateStr) return ''
-  return new Date(dateStr).toLocaleDateString('es-ES', {
+  return formatChileDateTime(dateStr, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
+    hour: undefined,
+    minute: undefined,
+    second: undefined,
   })
 }
 

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { chileDateRange, startOfChileDay, toChileDateString, toChileISOString } from '@/lib/chileTime'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -38,12 +39,6 @@ function getServerClient() {
   return createClient(url, key, { auth: { persistSession: false } })
 }
 
-function parseDateRange(from?: string | null, to?: string | null) {
-  const isoFrom = from ? new Date(`${from}T00:00:00.000Z`).toISOString() : null
-  const isoTo = to ? new Date(`${to}T23:59:59.999Z`).toISOString() : null
-  return { isoFrom, isoTo }
-}
-
 // 👇 Mapeo de alias (UI) → labels reales del enum
 const STATUS_FILTERS: Record<string, string | string[]> = {
   ok: 'allowed',
@@ -65,7 +60,7 @@ export async function GET(req: NextRequest) {
     const from = url.searchParams.get('from')
     const to = url.searchParams.get('to')
     const limit = Math.min(Number(url.searchParams.get('limit')) || 5000, 50000)
-    const { isoFrom, isoTo } = parseDateRange(from, to)
+    const { isoFrom, isoTo } = chileDateRange(from, to)
 
     // 1) access_logs
     let q = supabase
@@ -134,24 +129,24 @@ export async function GET(req: NextRequest) {
       let plan_fin: string | null = null
 
       if (l.athlete_id && membershipsByAthlete[l.athlete_id]) {
-        const tsDate = new Date(l.ts)
-        const onlyDate = new Date(Date.UTC(tsDate.getUTCFullYear(), tsDate.getUTCMonth(), tsDate.getUTCDate()))
+        const onlyDate = startOfChileDay(l.ts)
         const found = membershipsByAthlete[l.athlete_id].find((m: any) => {
+          if (!m.start_date || !m.end_date) return false
           return (
             (m.status ?? 'active') === 'active' &&
-            new Date(m.start_date) <= onlyDate &&
-            onlyDate <= new Date(m.end_date)
+            startOfChileDay(m.start_date) <= onlyDate &&
+            onlyDate <= startOfChileDay(m.end_date)
           )
         })
         if (found) {
           plan_vigente = found.plan ?? null
-          plan_inicio = found.start_date ?? null
-          plan_fin = found.end_date ?? null
+          plan_inicio = found.start_date ? toChileDateString(found.start_date) : null
+          plan_fin = found.end_date ? toChileDateString(found.end_date) : null
         }
       }
 
       return {
-        fecha: l.ts,
+        fecha: toChileISOString(l.ts),
         socio: ath?.name ?? null,
         email: ath?.email ?? null,
         phone: ath?.phone ?? null,
