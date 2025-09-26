@@ -1,6 +1,7 @@
 // app/api/admin/reports/summary/route.ts
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { chileDateRange, toChileDateString } from '@/lib/chileTime'
 
 type AccessStatus = 'allowed' | 'denied' | 'expired' | 'unknown_card'
 
@@ -35,16 +36,8 @@ function getServerClient() {
 }
 
 function ym(d: string | Date) {
-  const dt = new Date(d)
-  const y = dt.getUTCFullYear()
-  const m = String(dt.getUTCMonth() + 1).padStart(2, '0')
-  return `${y}-${m}`
-}
-
-function parseDateRange(from?: string | null, to?: string | null) {
-  const isoFrom = from ? new Date(`${from}T00:00:00.000Z`).toISOString() : null
-  const isoTo = to ? new Date(`${to}T23:59:59.999Z`).toISOString() : null
-  return { isoFrom, isoTo }
+  const date = toChileDateString(d)
+  return date.slice(0, 7)
 }
 
 // GET /api/admin/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -54,7 +47,7 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url)
     const from = url.searchParams.get('from')
     const to = url.searchParams.get('to')
-    const { isoFrom, isoTo } = parseDateRange(from, to)
+    const { isoFrom, isoTo } = chileDateRange(from, to)
 
     // Access logs
     let qa = supabase.from('access_logs').select('ts, result')

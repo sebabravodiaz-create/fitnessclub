@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import { formatChileDateTime, fromChileDateOnly, toChileDateString } from '@/lib/chileTime'
 
 type Athlete = {
   id: string
@@ -26,7 +27,7 @@ type AccessLog = {
 }
 
 function fmtDate(d: Date) {
-  return d.toISOString().slice(0, 10)
+  return toChileDateString(d)
 }
 function addMonths(date: Date, months: number) {
   const d = new Date(date)
@@ -110,7 +111,7 @@ export default function AthleteEditPage() {
     setCurrentEnd((mem as any)?.end_date ?? '')
     setMemPlan(planFromMem)
     setMemStart(today)
-    const base = new Date(today)
+    const base = fromChileDateOnly(today)
     setMemEnd(fmtDate(planFromMem === 'Anual' ? addMonths(base, 12) : addMonths(base, 1)))
 
     // 4) Historial de accesos (últimos 20)
@@ -134,7 +135,7 @@ export default function AthleteEditPage() {
   // Recalcular fin al cambiar plan o start (para la NUEVA membresía)
   useEffect(() => {
     if (!memStart) return
-    const base = new Date(memStart)
+    const base = fromChileDateOnly(memStart)
     const end = memPlan === 'Anual' ? addMonths(base, 12) : addMonths(base, 1)
     setMemEnd(fmtDate(end))
   }, [memPlan, memStart])
@@ -339,7 +340,10 @@ export default function AthleteEditPage() {
 
         {/* Actual vigente (solo lectura) */}
         <div className="text-sm text-gray-700">
-          <div>Vigente actual: {currentStart ? `${new Date(currentStart).toLocaleDateString()} → ${new Date(currentEnd).toLocaleDateString()}` : '—'}</div>
+          <div>
+            Vigente actual:{' '}
+            {currentStart ? `${toChileDateString(currentStart)} → ${toChileDateString(currentEnd)}` : '—'}
+          </div>
         </div>
 
         {/* Nueva membresía */}
@@ -381,7 +385,7 @@ export default function AthleteEditPage() {
           <button
             disabled={busy}
             onClick={() => {
-              const base = memStart ? new Date(memStart) : new Date()
+              const base = memStart ? fromChileDateOnly(memStart) : new Date()
               const end = memPlan === 'Anual' ? addMonths(base, 12) : addMonths(base, 1)
               setMemEnd(fmtDate(end))
             }}
@@ -411,7 +415,7 @@ export default function AthleteEditPage() {
               <tbody>
                 {access.map((l) => (
                   <tr key={l.id} className="border-t">
-                    <td className="px-3 py-2">{new Date(l.ts).toLocaleString()}</td>
+                    <td className="px-3 py-2">{formatChileDateTime(l.ts)}</td>
                     <td className="px-3 py-2">{l.result}</td>
                     <td className="px-3 py-2">{l.card_uid ?? '—'}</td>
                     <td className="px-3 py-2">{l.note ?? '—'}</td>
