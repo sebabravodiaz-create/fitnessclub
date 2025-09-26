@@ -44,6 +44,27 @@ create table if not exists public.access_logs (
   note text
 );
 
+create table if not exists public.membership_audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  membership_id uuid references public.memberships(id) on delete set null,
+  athlete_id uuid references public.athletes(id) on delete set null,
+  action text not null,
+  performed_by uuid references auth.users(id) on delete set null,
+  changes jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.login_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
+  email text,
+  success boolean not null,
+  failure_reason text,
+  ip_address text,
+  user_agent text,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.routines (
   id uuid primary key default gen_random_uuid(),
   title text not null,
@@ -72,6 +93,8 @@ alter table public.athletes enable row level security;
 alter table public.cards enable row level security;
 alter table public.memberships enable row level security;
 alter table public.access_logs enable row level security;
+alter table public.membership_audit_logs enable row level security;
+alter table public.login_logs enable row level security;
 
 create policy if not exists "Admins only athletes"
 on public.athletes for all to authenticated using (true) with check (true);
@@ -84,3 +107,55 @@ on public.memberships for all to authenticated using (true) with check (true);
 
 create policy if not exists "Admins only access_logs"
 on public.access_logs for all to authenticated using (true) with check (true);
+
+create policy if not exists "Admins read membership audit"
+on public.membership_audit_logs for select to authenticated using (true);
+
+create policy if not exists "Admins insert membership audit"
+on public.membership_audit_logs for insert to authenticated with check (true);
+
+create policy if not exists "Admins read login logs"
+on public.login_logs for select to authenticated using (true);
+
+create or replace function public.log_membership_audit()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  actor uuid := auth.uid();
+  payload jsonb;
+  membership uuid;
+  athlete uuid;
+begin
+  if (TG_OP = 'INSERT') then
+    payload := jsonb_build_object('new', to_jsonb(NEW));
+    membership := NEW.id;
+    athlete := NEW.athlete_id;
+  elsif (TG_OP = 'UPDATE') then
+    payload := jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW));
+    membership := NEW.id;
+    athlete := NEW.athlete_id;
+  elsif (TG_OP = 'DELETE') then
+    payload := jsonb_build_object('old', to_jsonb(OLD));
+    membership := OLD.id;
+    athlete := OLD.athlete_id;
+  else
+    return null;
+  end if;
+
+  insert into public.membership_audit_logs (membership_id, athlete_id, action, performed_by, changes)
+  values (membership, athlete, TG_OP, actor, payload);
+
+  if (TG_OP = 'DELETE') then
+    return OLD;
+  end if;
+  return NEW;
+end;
+$$;
+
+drop trigger if exists tr_memberships_audit on public.memberships;
+
+create trigger tr_memberships_audit
+after insert or update or delete on public.memberships
+for each row execute function public.log_membership_audit();

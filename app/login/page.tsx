@@ -70,15 +70,43 @@ function LoginForm() {
   const router = useRouter()
   const sp = useSearchParams()
 
+  async function logLoginAttempt(params: { success: boolean; email: string; userId?: string | null; failureReason?: string | null }) {
+    try {
+      const payload = {
+        ...params,
+        email: params.email.trim().toLowerCase(),
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+      }
+      await fetch('/api/logs/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+    } catch (err) {
+      console.error('No se pudo registrar el intento de login', err)
+    }
+  }
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) { setError(error.message); return }
-      if (!data?.user) { setError('No se pudo iniciar sesión, revisa tus credenciales.'); return }
+      const normalizedEmail = email.trim()
+      const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
+      if (error) {
+        await logLoginAttempt({ email: normalizedEmail, success: false, failureReason: error.message })
+        setError(error.message)
+        return
+      }
+      if (!data?.user) {
+        await logLoginAttempt({ email: normalizedEmail, success: false, failureReason: 'No se devolvió un usuario en la sesión.' })
+        setError('No se pudo iniciar sesión, revisa tus credenciales.')
+        return
+      }
+
+      await logLoginAttempt({ email: normalizedEmail, success: true, userId: data.user.id })
 
       document.cookie = `admin_entry=1; Max-Age=3600; Path=/admin; SameSite=Lax`
 
@@ -90,7 +118,9 @@ function LoginForm() {
 
       router.replace('/admin')
     } catch (err: any) {
-      setError(err?.message ?? 'Error inesperado al iniciar sesión')
+      const message = err?.message ?? 'Error inesperado al iniciar sesión'
+      await logLoginAttempt({ email, success: false, failureReason: message })
+      setError(message)
     } finally {
       setLoading(false)
     }
