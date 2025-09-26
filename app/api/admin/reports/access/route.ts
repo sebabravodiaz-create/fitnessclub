@@ -1,74 +1,181 @@
-import type { NextRequest } from 'next/server'
+import { NextRequest } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
-type AccessStatus = 'ok' | 'nok'
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
-const dataByStatus: Record<AccessStatus, Array<Record<string, string>>> = {
-  ok: [
-    {
-      fecha: '2024-06-01T06:05:11Z',
-      socio: 'María González',
-      membresia: 'Full Access',
-      tarjeta: 'A1B2C3',
-      estado: 'OK',
-    },
-    {
-      fecha: '2024-06-01T07:12:43Z',
-      socio: 'Juan Pérez',
-      membresia: 'Morning Club',
-      tarjeta: 'D4E5F6',
-      estado: 'OK',
-    },
-    {
-      fecha: '2024-06-01T08:55:09Z',
-      socio: 'Camila Rojas',
-      membresia: 'Weekend Pass',
-      tarjeta: 'G7H8I9',
-      estado: 'OK',
-    },
-  ],
-  nok: [
-    {
-      fecha: '2024-06-01T06:45:02Z',
-      socio: 'Luis Muñoz',
-      membresia: 'Full Access',
-      tarjeta: 'J1K2L3',
-      estado: 'NOK',
-    },
-    {
-      fecha: '2024-06-01T09:31:27Z',
-      socio: 'Daniela Silva',
-      membresia: 'Corporate',
-      tarjeta: 'M4N5O6',
-      estado: 'NOK',
-    },
-  ],
+type AccessRow = {
+  fecha: string
+  socio: string | null
+  email: string | null
+  phone: string | null
+  tarjeta_uid: string | null
+  estado: string
+  plan_vigente: string | null
+  plan_inicio: string | null
+  plan_fin: string | null
+  nota: string | null
 }
 
-function toCsv(rows: Array<Record<string, string>>) {
-  if (rows.length === 0) {
-    return 'mensaje\nNo se encontraron registros para los filtros seleccionados.'
-  }
-
+function toCsv(rows: Array<Record<string, unknown>>) {
+  if (!rows.length) return 'mensaje\nNo se encontraron registros.'
   const header = Object.keys(rows[0])
-  const csvRows = rows.map((row) => header.map((key) => row[key] ?? '').join(','))
-
+  const escape = (val: unknown) => {
+    if (val === null || val === undefined) return ''
+    const s = String(val)
+    const needsQuotes = /[",\n]/.test(s)
+    const escaped = s.replace(/"/g, '""')
+    return needsQuotes ? `"${escaped}"` : escaped
+  }
+  const csvRows = rows.map((row) => header.map((k) => escape(row[k])).join(','))
   return [header.join(','), ...csvRows].join('\n')
 }
 
-export async function GET(request: NextRequest) {
-  const statusParam = request.nextUrl.searchParams.get('status') ?? 'ok'
-  const status = statusParam === 'nok' ? 'nok' : 'ok'
-
-  const csv = toCsv(dataByStatus[status])
-  const csvWithBom = `﻿${csv}`
-  const fileName = `reporte_accesos_${status}.csv`
-
-  return new Response(csvWithBom, {
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${fileName}"`,
-      'Cache-Control': 'no-store',
-    },
-  })
+function getServerClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  if (!url || !key) throw new Error('Faltan variables de entorno de Supabase.')
+  return createClient(url, key, { auth: { persistSession: false } })
 }
 
+function parseDateRange(from?: string | null, to?: string | null) {
+  const isoFrom = from ? new Date(`${from}T00:00:00.000Z`).toISOString() : null
+  const isoTo = to ? new Date(`${to}T23:59:59.999Z`).toISOString() : null
+  return { isoFrom, isoTo }
+}
+
+// 👇 Mapeo de alias (UI) → labels reales del enum
+const STATUS_MAP: Record<string, string> = {
+  ok: 'allowed',
+  nok: 'denied',
+  expired: 'expired',
+  unknown_card: 'unknown_card',
+}
+
+// GET /api/admin/reports/access?status=ok|nok|expired|unknown_card&from=YYYY-MM-DD&to=YYYY-MM-DD&limit=5000
+export async function GET(req: NextRequest) {
+  try {
+    const supabase = getServerClient()
+    const url = new URL(req.url)
+
+    const requested = (url.searchParams.get('status') ?? '').toLowerCase().trim()
+    const mapped = requested && STATUS_MAP[requested] ? STATUS_MAP[requested] : null
+
+    const from = url.searchParams.get('from')
+    const to = url.searchParams.get('to')
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 5000, 50000)
+    const { isoFrom, isoTo } = parseDateRange(from, to)
+
+    // 1) access_logs
+    let q = supabase
+      .from('access_logs')
+      .select('id, ts, result, note, card_uid, athlete_id')
+      .order('ts', { ascending: false })
+      .limit(limit)
+
+    if (mapped) q = q.eq('result', mapped)
+    if (isoFrom) q = q.gte('ts', isoFrom)
+    if (isoTo) q = q.lte('ts', isoTo)
+
+    const { data: logs, error: logsErr } = await q
+    if (logsErr) throw logsErr
+
+    if (!logs?.length) {
+      const csv = toCsv([])
+      const fileName = `reporte_accesos_${requested || 'todos'}${from ? `_${from}` : ''}${to ? `_${to}` : ''}.csv`
+      return new Response(`\uFEFF${csv}`, {
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${fileName}"`,
+          'Cache-Control': 'no-store',
+        },
+      })
+    }
+
+    // 2) athletes
+    const athleteIds = Array.from(new Set(logs.map((l) => l.athlete_id).filter(Boolean))) as string[]
+    const athletesById: Record<string, { name: string | null; email: string | null; phone: string | null }> = {}
+    if (athleteIds.length) {
+      const { data: athletes, error: athErr } = await supabase
+        .from('athletes')
+        .select('id, name, email, phone')
+        .in('id', athleteIds)
+      if (athErr) throw athErr
+      for (const a of athletes ?? []) {
+        athletesById[a.id] = { name: a.name ?? null, email: a.email ?? null, phone: a.phone ?? null }
+      }
+    }
+
+    // 3) memberships (todas del set de atletas → evaluamos vigencia por fecha de acceso)
+    const membershipsByAthlete: Record<string, Array<any>> = {}
+    if (athleteIds.length) {
+      const { data: mems, error: memErr } = await supabase
+        .from('memberships')
+        .select('athlete_id, plan, status, start_date, end_date')
+        .in('athlete_id', athleteIds)
+      if (memErr) throw memErr
+      for (const m of mems ?? []) {
+        const k = m.athlete_id as string
+        if (!membershipsByAthlete[k]) membershipsByAthlete[k] = []
+        membershipsByAthlete[k].push(m)
+      }
+      for (const k of Object.keys(membershipsByAthlete)) {
+        membershipsByAthlete[k].sort((a, b) => (a.end_date < b.end_date ? 1 : -1))
+      }
+    }
+
+    const rows: AccessRow[] = logs.map((l: any) => {
+      const ath = l.athlete_id ? athletesById[l.athlete_id] : undefined
+
+      let plan_vigente: string | null = null
+      let plan_inicio: string | null = null
+      let plan_fin: string | null = null
+
+      if (l.athlete_id && membershipsByAthlete[l.athlete_id]) {
+        const tsDate = new Date(l.ts)
+        const onlyDate = new Date(Date.UTC(tsDate.getUTCFullYear(), tsDate.getUTCMonth(), tsDate.getUTCDate()))
+        const found = membershipsByAthlete[l.athlete_id].find((m: any) => {
+          return (
+            (m.status ?? 'active') === 'active' &&
+            new Date(m.start_date) <= onlyDate &&
+            onlyDate <= new Date(m.end_date)
+          )
+        })
+        if (found) {
+          plan_vigente = found.plan ?? null
+          plan_inicio = found.start_date ?? null
+          plan_fin = found.end_date ?? null
+        }
+      }
+
+      return {
+        fecha: l.ts,
+        socio: ath?.name ?? null,
+        email: ath?.email ?? null,
+        phone: ath?.phone ?? null,
+        tarjeta_uid: l.card_uid ?? null,
+        estado: l.result, // <- enum real (allowed/denied/expired/unknown_card)
+        plan_vigente,
+        plan_inicio,
+        plan_fin,
+        nota: l.note ?? null,
+      }
+    })
+
+    const csv = toCsv(rows)
+    const fileName = `reporte_accesos_${requested || 'todos'}${from ? `_${from}` : ''}${to ? `_${to}` : ''}.csv`
+    return new Response(`\uFEFF${csv}`, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${fileName}"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  } catch (err: any) {
+    const msg = err?.message ?? String(err)
+    return new Response(`error,detalle\ntrue,"${msg.replace(/"/g, '""')}"`, {
+      status: 500,
+      headers: { 'Content-Type': 'text/csv; charset=utf-8' },
+    })
+  }
+}

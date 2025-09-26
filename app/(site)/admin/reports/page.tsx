@@ -1,3 +1,4 @@
+// app/(site)/admin/reports/page.tsx
 type ReportAction = {
   href: string
   label: string
@@ -42,30 +43,27 @@ const reportGroups: ReportCardProps[] = [
   {
     title: 'Accesos por tarjeta',
     summary:
-      'Descarga los registros históricos de accesos con validación OK o NOK para revisar actividades inusuales.',
+      'Descarga los registros históricos de accesos con validación OK, NOK o tarjetas no reconocidas.',
     actions: [
-      {
-        href: '/api/admin/reports/access?status=ok',
-        label: 'Descargar accesos OK',
-        description: 'CSV',
-      },
-      {
-        href: '/api/admin/reports/access?status=nok',
-        label: 'Descargar accesos NOK',
-        description: 'CSV',
-      },
+      { href: '/api/admin/reports/access?status=ok',  label: 'Descargar accesos OK',  description: 'CSV' },
+      { href: '/api/admin/reports/access?status=nok', label: 'Descargar accesos NOK', description: 'CSV' },
+      { href: '/api/admin/reports/access?status=unknown_card', label: 'Descargar tarjetas no registradas', description: 'CSV' },
     ],
   },
   {
     title: 'Actualizaciones de membresía',
     summary:
-      'Listado de renovaciones, degradaciones y suspensiones para conciliar con facturación y área comercial.',
+      'Nuevas, renovaciones, cambios de plan y suspensiones/no activas, por atleta.',
     actions: [
-      {
-        href: '/api/admin/reports/memberships',
-        label: 'Descargar movimientos de membresía',
-        description: 'CSV',
-      },
+      { href: '/api/admin/reports/memberships', label: 'Descargar movimientos de membresía', description: 'CSV' },
+    ],
+  },
+  {
+    title: 'Resumen mensual',
+    summary:
+      'Accesos (OK/NOK/Unknown), nuevos socios y membresías no activas creadas por período YYYY-MM.',
+    actions: [
+      { href: '/api/admin/reports/summary', label: 'Descargar resumen mensual', description: 'CSV' },
     ],
   },
 ]
@@ -76,8 +74,7 @@ export default function ReportsPage() {
       <header className="text-center">
         <h1 className="text-3xl font-bold text-gray-900">Reportes</h1>
         <p className="mx-auto mt-2 max-w-3xl text-sm text-gray-600">
-          Explora opciones preliminares de reportes para el panel administrativo. Puedes descargar los archivos CSV con datos
-          ficticios a modo de ejemplo y utilizarlos como base para futuras integraciones con la base de datos.
+          Genera descargas CSV en vivo desde la base de datos para análisis y conciliaciones.
         </p>
       </header>
 
@@ -89,4 +86,3 @@ export default function ReportsPage() {
     </main>
   )
 }
-

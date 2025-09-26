@@ -1,122 +1,140 @@
-import { NextResponse } from 'next/server'
-import { getServiceRoleClient, getServiceRoleConfig } from '@/lib/supabase/service-role'
+// app/api/access/validate/route.ts
+import { NextRequest } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
-type CardRow = {
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+type AccessResult = 'allowed' | 'denied' | 'expired' | 'unknown_card'
+
+type AthleteLite = {
+  name: string | null
+  email?: string | null
+  phone?: string | null
+}
+
+type CardWithAthlete = {
   id: string
   uid: string
   active: boolean
-  athlete_id: string | null
+  athlete_id: string
+  athletes?: AthleteLite | AthleteLite[]
 }
 
-type AthleteRow = {
-  id: string
-  name: string | null
+function getServerClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  if (!url || !key) throw new Error('Faltan NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY')
+  return createClient(url, key, { auth: { persistSession: false } })
 }
 
-type MembershipRow = {
-  id: string
-  plan: string | null
-  end_date: string
-  status: string | null
+function todayUTCDateOnly(): Date {
+  const now = new Date()
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const config = getServiceRoleConfig()
+    const supabase = getServerClient()
+    const body = await req.json().catch(() => ({} as any))
 
-    if (!config) {
-      console.error('Error en /api/access/validate: falta configuración de Supabase service role')
-      return NextResponse.json(
-        {
-          ok: false,
-          result: 'missing_supabase_config',
-          missing: ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'],
-        },
-        { status: 503 },
-      )
+    const rawUID = (body?.cardUID ?? '').toString()
+    const cleanedUID = rawUID.replace(/^0+/, '').trim()
+
+    if (!cleanedUID) {
+      return Response.json({ ok: false, error: 'cardUID requerido' }, { status: 400 })
     }
 
-    const supabase = getServiceRoleClient(config)
-    const { cardUID } = await req.json()
-    if (!cardUID) {
-      return NextResponse.json({ ok: false, result: 'missing_uid' }, { status: 400 })
-    }
+    const today = todayUTCDateOnly()
 
-    const cleanedUID = cardUID.replace(/^0+/, '')
-
-    // Buscar tarjeta
-    const { data: card } = await supabase
+    // 1) Buscar tarjeta activa
+    const { data: card, error: cardErr } = await supabase
       .from('cards')
-      .select('id, uid, active, athlete_id')
+      .select(`
+        id,
+        uid,
+        active,
+        athlete_id,
+        athletes:athletes ( name, email, phone )
+      `)
       .eq('uid', cleanedUID)
       .eq('active', true)
-      .maybeSingle<CardRow>()
+      .maybeSingle<CardWithAthlete>()
+    if (cardErr) throw cardErr
+
+    let result: AccessResult
+    let note = ''
+    let athlete: { id?: string; name?: string | null } | null = null
+    let membership: { plan?: string | null; end_date?: string | null } | null = null
 
     if (!card) {
-      return NextResponse.json({ ok: true, result: 'unknown_card', uid: cleanedUID })
-    }
+      // Tarjeta no registrada o inactiva
+      result = 'unknown_card'
+      note = 'Tarjeta no registrada o inactiva'
+    } else {
+      const athleteRel = card.athletes
+      const athleteObj = Array.isArray(athleteRel) ? athleteRel[0] : athleteRel
+      athlete = { id: card.athlete_id, name: athleteObj?.name ?? null }
 
-    if (!card.athlete_id) {
-      return NextResponse.json({ ok: true, result: 'unknown_card', uid: cleanedUID })
-    }
+      // 2) Buscar membresías del atleta y evaluar vigencia
+      const { data: mems, error: memErr } = await supabase
+        .from('memberships')
+        .select('plan, status, start_date, end_date')
+        .eq('athlete_id', card.athlete_id)
+      if (memErr) throw memErr
 
-    // Buscar atleta
-    const { data: athlete } = await supabase
-      .from('athletes')
-      .select('id, name')
-      .eq('id', card.athlete_id)
-      .maybeSingle<AthleteRow>()
-
-    if (!athlete) {
-      return NextResponse.json({ ok: true, result: 'unknown_card', uid: cleanedUID })
-    }
-
-    // Buscar membresía más reciente
-    const today = new Date().toISOString().split('T')[0]
-    const { data: membership } = await supabase
-      .from('memberships')
-      .select('id, plan, end_date, status')
-      .eq('athlete_id', athlete.id)
-      .order('end_date', { ascending: false })
-      .limit(1)
-      .maybeSingle<MembershipRow>()
-
-    // Si no hay membresía en absoluto
-    if (!membership) {
-      return NextResponse.json({
-        ok: true,
-        result: 'expired',
-        uid: cleanedUID,
-        athlete,
-        membership: null
+      const activeMems = (mems ?? []).filter(m => (m.status ?? 'active') === 'active')
+      const covering = activeMems.find(m => {
+        const start = new Date(m.start_date)
+        const end = new Date(m.end_date)
+        return start <= today && today <= end
       })
+
+      if (covering) {
+        result = 'allowed'
+        membership = { plan: covering.plan ?? null, end_date: covering.end_date ?? null }
+      } else if (activeMems.some(m => new Date(m.end_date) < today)) {
+        result = 'expired'
+        const lastExpired = activeMems
+          .filter(m => new Date(m.end_date) < today)
+          .sort((a, b) => (a.end_date < b.end_date ? 1 : -1))[0]
+        membership = { plan: lastExpired?.plan ?? null, end_date: lastExpired?.end_date ?? null }
+      } else {
+        result = 'denied'
+      }
     }
 
-    // Normalizar status (activo/active)
-    const status = (membership.status || '').toLowerCase()
-
-    // Si ya expiró o no está activa
-    if (status !== 'active' && status !== 'activo' || membership.end_date < today) {
-      return NextResponse.json({
-        ok: true,
-        result: 'expired',
-        uid: cleanedUID,
-        athlete,
-        membership // 👈 siempre devolvemos el objeto, con end_date
-      })
+    // 3) Insertar registro en access_logs
+    const payload = {
+      athlete_id: athlete?.id ?? null,
+      card_uid: cleanedUID,
+      ts: new Date().toISOString(),
+      result,
+      note,
     }
 
-    // Vigente
-    return NextResponse.json({
-      ok: true,
-      result: 'allowed',
+    const { data: inserted, error: insErr } = await supabase
+      .from('access_logs')
+      .insert(payload)
+      .select('id, ts')
+      .single()
+
+    if (insErr) {
+      return Response.json({ ok: false, error: insErr.message, result, uid: cleanedUID }, { status: 500 })
+    }
+
+    // 4) Responder al kiosk
+    return Response.json({
+      ok: result === 'allowed',
+      access_id: inserted?.id ?? null,
+      ts: inserted?.ts ?? payload.ts,
+      result,
       uid: cleanedUID,
       athlete,
-      membership
+      membership,
     })
-
-  } catch (err) {
-    console.error("Error en /api/access/validate", err)
-    return NextResponse.json({ ok: false, result: 'error' }, { status: 500 })
+  } catch (err: any) {
+    console.error('[access.validate] error:', err)
+    return Response.json({ ok: false, error: err?.message ?? 'Unexpected error' }, { status: 500 })
   }
 }

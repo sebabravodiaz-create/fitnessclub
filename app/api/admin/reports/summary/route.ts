@@ -1,43 +1,126 @@
-const summaryRows = [
-  {
-    periodo: '2024-05',
-    accesos_ok: '1240',
-    accesos_nok: '37',
-    nuevos_socios: '58',
-    membresias_suspendidas: '12',
-    ingresos_estimados: '14500000',
-  },
-  {
-    periodo: '2024-04',
-    accesos_ok: '1187',
-    accesos_nok: '45',
-    nuevos_socios: '63',
-    membresias_suspendidas: '9',
-    ingresos_estimados: '13850000',
-  },
-]
+// app/api/admin/reports/summary/route.ts
+import { NextRequest } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
-function toCsv(rows: Array<Record<string, string>>) {
-  if (rows.length === 0) {
-    return 'mensaje\nNo hay datos disponibles para el resumen solicitado.'
-  }
+type SummaryRow = {
+  periodo: string
+  accesos_ok: number
+  accesos_nok: number
+  accesos_unknown_card: number
+  nuevos_socios: number
+  membresias_no_activas_creadas: number
+}
 
+function toCsv(rows: Array<Record<string, unknown>>) {
+  if (!rows.length) return 'mensaje\nNo hay datos disponibles para el resumen solicitado.'
   const header = Object.keys(rows[0])
-  const csvRows = rows.map((row) => header.map((key) => row[key] ?? '').join(','))
-
+  const escape = (val: unknown) => {
+    if (val === null || val === undefined) return ''
+    const s = String(val)
+    const needsQuotes = /[",\n]/.test(s)
+    const escaped = s.replace(/"/g, '""')
+    return needsQuotes ? `"${escaped}"` : escaped
+  }
+  const csvRows = rows.map((row) => header.map((k) => escape(row[k])).join(','))
   return [header.join(','), ...csvRows].join('\n')
 }
 
-export async function GET() {
-  const csv = toCsv(summaryRows)
-  const csvWithBom = `﻿${csv}`
-
-  return new Response(csvWithBom, {
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': 'attachment; filename="reporte_resumen_mensual.csv"',
-      'Cache-Control': 'no-store',
-    },
-  })
+function getServerClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  if (!url || !key) throw new Error('Faltan variables de entorno de Supabase.')
+  return createClient(url, key, { auth: { persistSession: false } })
 }
 
+function ym(d: string | Date) {
+  const dt = new Date(d)
+  const y = dt.getUTCFullYear()
+  const m = String(dt.getUTCMonth() + 1).padStart(2, '0')
+  return `${y}-${m}`
+}
+
+function parseDateRange(from?: string | null, to?: string | null) {
+  const isoFrom = from ? new Date(`${from}T00:00:00.000Z`).toISOString() : null
+  const isoTo = to ? new Date(`${to}T23:59:59.999Z`).toISOString() : null
+  return { isoFrom, isoTo }
+}
+
+// GET /api/admin/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
+export async function GET(req: NextRequest) {
+  try {
+    const supabase = getServerClient()
+    const url = new URL(req.url)
+    const from = url.searchParams.get('from')
+    const to = url.searchParams.get('to')
+    const { isoFrom, isoTo } = parseDateRange(from, to)
+
+    // Access logs
+    let qa = supabase.from('access_logs').select('ts, result')
+    if (isoFrom) qa = qa.gte('ts', isoFrom)
+    if (isoTo) qa = qa.lte('ts', isoTo)
+    const { data: acc, error: accErr } = await qa
+    if (accErr) throw accErr
+
+    // Athletes
+    let qb = supabase.from('athletes').select('created_at')
+    if (isoFrom) qb = qb.gte('created_at', isoFrom)
+    if (isoTo) qb = qb.lte('created_at', isoTo)
+    const { data: ath, error: athErr } = await qb
+    if (athErr) throw athErr
+
+    // Memberships
+    let qm = supabase.from('memberships').select('created_at, status')
+    if (isoFrom) qm = qm.gte('created_at', isoFrom)
+    if (isoTo) qm = qm.lte('created_at', isoTo)
+    const { data: mem, error: memErr } = await qm
+    if (memErr) throw memErr
+
+    const byPeriod: Record<string, SummaryRow> = {}
+    const ensure = (p: string) => {
+      if (!byPeriod[p]) {
+        byPeriod[p] = {
+          periodo: p,
+          accesos_ok: 0,
+          accesos_nok: 0,
+          accesos_unknown_card: 0,
+          nuevos_socios: 0,
+          membresias_no_activas_creadas: 0,
+        }
+      }
+      return byPeriod[p]
+    }
+
+    for (const a of acc ?? []) {
+      const p = ym(a.ts)
+      const row = ensure(p)
+      if (a.result === 'ok') row.accesos_ok += 1
+      else if (a.result === 'nok') row.accesos_nok += 1
+      else row.accesos_unknown_card += 1
+    }
+
+    for (const a of ath ?? []) ensure(ym(a.created_at)).nuevos_socios += 1
+
+    for (const m of mem ?? []) {
+      const row = ensure(ym(m.created_at))
+      if ((m.status ?? 'active') !== 'active') row.membresias_no_activas_creadas += 1
+    }
+
+    const rows = Object.values(byPeriod).sort((a, b) => (a.periodo < b.periodo ? -1 : 1))
+    const file = `reporte_resumen_mensual${from ? `_${from}` : ''}${to ? `_${to}` : ''}.csv`
+
+    const csv = toCsv(rows)
+    return new Response(`\uFEFF${csv}`, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${file}"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  } catch (err: any) {
+    const msg = err?.message ?? String(err)
+    return new Response(`error,detalle\ntrue,"${msg.replace(/"/g, '""')}"`, {
+      status: 500,
+      headers: { 'Content-Type': 'text/csv; charset=utf-8' },
+    })
+  }
+}

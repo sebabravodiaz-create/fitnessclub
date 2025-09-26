@@ -14,21 +14,30 @@ function formatDate(dateStr?: string) {
   return new Date(dateStr).toLocaleDateString('es-ES', {
     day: 'numeric',
     month: 'long',
-    year: 'numeric'
+    year: 'numeric',
   })
 }
 
 export default function KioskPage() {
+  // 1) Hooks SIEMPRE arriba y en el mismo orden
+  const [mounted, setMounted] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const [status, setStatus] = useState<'idle'|'ok'|'fail'>('idle')
+  const [status, setStatus] = useState<'idle' | 'ok' | 'fail'>('idle')
   const [message, setMessage] = useState<string>('Acerca la tarjeta...')
-  const [lastUID, setLastUID] = useState<string>('')   
-  const [lastEndDate, setLastEndDate] = useState<string>('')   
-  const [history, setHistory] = useState<AccessResult[]>([]) 
-  const bufferRef = useRef<string>('') 
-  const timeoutRef = useRef<any>(null)  
+  const [lastUID, setLastUID] = useState<string>('')
+  const [lastEndDate, setLastEndDate] = useState<string>('')
+  const [history, setHistory] = useState<AccessResult[]>([])
+  const bufferRef = useRef<string>('')
+  const timeoutRef = useRef<any>(null)
 
+  // 2) Efecto de montaje (no acceder a window fuera de efectos)
   useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // 3) Foco y listeners solo cuando ya hay window
+  useEffect(() => {
+    if (!mounted) return
     const focusInput = () => inputRef.current?.focus()
     focusInput()
     const onClick = () => focusInput()
@@ -38,9 +47,11 @@ export default function KioskPage() {
       window.removeEventListener('click', onClick)
       window.removeEventListener('touchstart', onClick)
     }
-  }, [])
+  }, [mounted])
 
+  // 4) Lectura por teclado (solo tras montaje)
   useEffect(() => {
+    if (!mounted) return
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         const uid = bufferRef.current.trim()
@@ -60,7 +71,7 @@ export default function KioskPage() {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [])
+  }, [mounted])
 
   async function validate(cardUID: string) {
     const cleanedUID = cardUID.replace(/^0+/, '')
@@ -86,7 +97,7 @@ export default function KioskPage() {
           uid: data.uid,
           membership: 'Vigente',
           endDate: data.membership?.end_date,
-          status: 'allowed'
+          status: 'allowed',
         })
       } else if (data.result === 'expired') {
         setStatus('fail')
@@ -97,7 +108,7 @@ export default function KioskPage() {
           uid: data.uid,
           membership: 'Expirada',
           endDate: data.membership?.end_date,
-          status: 'expired'
+          status: 'expired',
         })
       } else {
         setStatus('fail')
@@ -107,7 +118,7 @@ export default function KioskPage() {
           name: 'Desconocido',
           uid: data.uid,
           membership: 'N/A',
-          status: 'unknown_card'
+          status: 'unknown_card',
         })
       }
     } catch {
@@ -127,6 +138,11 @@ export default function KioskPage() {
     setHistory(prev => [entry, ...prev].slice(0, 20))
   }
 
+  // 5) Render “placeholder” mientras montamos para evitar hydration mismatch
+  if (!mounted) {
+    return <div className="h-screen w-screen bg-gray-50" />
+  }
+
   return (
     <div className="h-screen w-screen flex select-none bg-gray-50">
       {/* Panel central */}
@@ -141,12 +157,12 @@ export default function KioskPage() {
           <p className="text-3xl font-semibold whitespace-pre-line">{message}</p>
 
           {lastUID && (
-            <p className="text-xl text-gray-600 mt-4">UID leído: <b>{lastUID}</b></p>
+            <p className="text-xl text-gray-600 mt-4">
+              UID leído: <b>{lastUID}</b>
+            </p>
           )}
           {lastEndDate && (
-            <p className="text-lg text-gray-700 mt-2">
-              Vence: {formatDate(lastEndDate)}
-            </p>
+            <p className="text-lg text-gray-700 mt-2">Vence: {formatDate(lastEndDate)}</p>
           )}
 
           <input
@@ -170,16 +186,14 @@ export default function KioskPage() {
               key={i}
               className={[
                 'p-3 rounded-lg',
-                h.status === 'allowed' ? 'bg-green-100' : 'bg-red-100'
+                h.status === 'allowed' ? 'bg-green-100' : 'bg-red-100',
               ].join(' ')}
             >
               <p className="font-semibold">{h.name}</p>
               <p className="text-sm text-gray-700">Tarjeta: {h.uid}</p>
               <p className="text-sm text-gray-700">Membresía: {h.membership}</p>
               {h.endDate && (
-                <p className="text-sm text-gray-500">
-                  Vence: {formatDate(h.endDate)}
-                </p>
+                <p className="text-sm text-gray-500">Vence: {formatDate(h.endDate)}</p>
               )}
             </div>
           ))}
