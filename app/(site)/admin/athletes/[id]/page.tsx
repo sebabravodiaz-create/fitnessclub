@@ -5,6 +5,11 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import {
+  getAthletePhotoPublicUrl,
+  removeAthletePhoto,
+  uploadAthletePhoto,
+} from '@/lib/athletePhotos'
 
 type Athlete = {
   id: string
@@ -12,6 +17,7 @@ type Athlete = {
   email: string | null
   phone: string | null
   rut: string | null
+  photo_path: string | null
   created_at: string
 }
 
@@ -24,6 +30,8 @@ type AccessLog = {
   card_uid: string | null
   note: string | null
 }
+
+const PLACEHOLDER_PHOTO = '/images/athlete-placeholder.svg'
 
 function fmtDate(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -39,6 +47,12 @@ export default function AthleteEditPage() {
   const router = useRouter()
 
   const [ath, setAth] = useState<Athlete | null>(null)
+
+  const [photoPath, setPhotoPath] = useState<string | null>(null)
+  const [photoUrl, setPhotoUrl] = useState<string>('')
+  const [newPhotoFile, setNewPhotoFile] = useState<File | null>(null)
+  const [newPhotoPreview, setNewPhotoPreview] = useState<string | null>(null)
+  const [removePhoto, setRemovePhoto] = useState(false)
 
   // RFID (mostrar activo; al guardar: desactivar previos + crear uno nuevo)
   const [rfid, setRfid] = useState<string>('')
@@ -77,11 +91,21 @@ export default function AthleteEditPage() {
     // 1) Atleta
     const { data: a, error: aErr } = await supabase
       .from('athletes')
-      .select('id, name, email, phone, rut, created_at')
+      .select('id, name, email, phone, rut, photo_path, created_at')
       .eq('id', id)
       .maybeSingle()
     if (aErr) { setMsg(aErr.message); setLoading(false); return }
-    setAth(a as Athlete)
+    const athleteRecord = a as Athlete
+    setAth(athleteRecord)
+    const path = athleteRecord?.photo_path ?? null
+    setPhotoPath(path)
+    setPhotoUrl(getAthletePhotoPublicUrl(supabase, path))
+    setNewPhotoFile(null)
+    setRemovePhoto(false)
+    setNewPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
 
     // 2) Tarjeta activa
     const { data: card } = await supabase
@@ -131,6 +155,38 @@ export default function AthleteEditPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
+  useEffect(() => {
+    return () => {
+      if (newPhotoPreview) URL.revokeObjectURL(newPhotoPreview)
+    }
+  }, [newPhotoPreview])
+
+  const onSelectNewPhoto = (file: File | null) => {
+    setNewPhotoFile(file)
+    setRemovePhoto(false)
+    setNewPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return file ? URL.createObjectURL(file) : null
+    })
+  }
+
+  const clearNewPhotoSelection = () => {
+    setNewPhotoFile(null)
+    setNewPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+  }
+
+  const onRequestRemovePhoto = () => {
+    clearNewPhotoSelection()
+    setRemovePhoto(true)
+  }
+
+  const onCancelRemovePhoto = () => {
+    setRemovePhoto(false)
+  }
+
   // Recalcular fin al cambiar plan o start (para la NUEVA membresía)
   useEffect(() => {
     if (!memStart) return
@@ -145,19 +201,45 @@ export default function AthleteEditPage() {
     if (!ath) return
     setBusy(true); setMsg(null)
 
-    const { error } = await supabase
-      .from('athletes')
-      .update({
-        name: ath.name?.trim() || null,
-        email: ath.email?.trim() || null,
-        phone: ath.phone?.trim() || null,
-        rut: ath.rut?.trim() || null,
-      })
-      .eq('id', ath.id)
+    try {
+      let nextPhotoPath = photoPath
 
-    if (error) setMsg(error.message)
-    else setMsg('Datos guardados.')
-    setBusy(false)
+      if (removePhoto && photoPath) {
+        await removeAthletePhoto(supabase, photoPath)
+        nextPhotoPath = null
+      }
+
+      if (newPhotoFile) {
+        const uploadedPath = await uploadAthletePhoto(supabase, ath.id, newPhotoFile)
+        if (photoPath && photoPath !== uploadedPath) {
+          await removeAthletePhoto(supabase, photoPath)
+        }
+        nextPhotoPath = uploadedPath
+      }
+
+      const { error } = await supabase
+        .from('athletes')
+        .update({
+          name: ath.name?.trim() || null,
+          email: ath.email?.trim() || null,
+          phone: ath.phone?.trim() || null,
+          rut: ath.rut?.trim() || null,
+          photo_path: nextPhotoPath,
+        })
+        .eq('id', ath.id)
+
+      if (error) throw error
+
+      setMsg('Datos guardados.')
+      setPhotoPath(nextPhotoPath ?? null)
+      setPhotoUrl(getAthletePhotoPublicUrl(supabase, nextPhotoPath))
+      clearNewPhotoSelection()
+      setRemovePhoto(false)
+    } catch (err: any) {
+      setMsg(err?.message || 'No se pudieron guardar los datos.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   // ---- Guardar/Asignar RFID con HISTÓRICO ----
@@ -228,6 +310,10 @@ export default function AthleteEditPage() {
     }
     setBusy(true); setMsg(null)
     try {
+      if (photoPath) {
+        await removeAthletePhoto(supabase, photoPath)
+      }
+
       // 0) Quitar relación en access_logs (athlete_id es NULLABLE)
       const { error: logsNullErr } = await supabase
         .from('access_logs')
@@ -264,6 +350,9 @@ export default function AthleteEditPage() {
       setBusy(false)
     }
   }
+
+  const previewPhoto = removePhoto ? '' : newPhotoPreview ?? photoUrl
+  const photoSrc = previewPhoto || PLACEHOLDER_PHOTO
 
   if (loading) return <main className="max-w-3xl mx-auto p-6">Cargando…</main>
   if (!ath) return <main className="max-w-3xl mx-auto p-6 text-red-600">No se encontró el atleta.</main>
@@ -308,6 +397,60 @@ export default function AthleteEditPage() {
               onChange={(e)=>setAth({...ath, phone: e.target.value})}
             />
           </label>
+        </div>
+        <div className="space-y-3">
+          <p className="text-sm font-medium">Foto del deportista</p>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <img
+              src={photoSrc}
+              alt="Foto del deportista"
+              className="w-24 h-24 rounded-full object-cover border"
+            />
+            <div className="space-y-2 text-sm">
+              <input
+                type="file"
+                accept="image/*"
+                className="text-sm"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null
+                  onSelectNewPhoto(file)
+                  event.target.value = ''
+                }}
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                {(photoPath && !removePhoto) && (
+                  <button
+                    type="button"
+                    onClick={onRequestRemovePhoto}
+                    className="text-red-600 underline"
+                  >
+                    Quitar foto actual
+                  </button>
+                )}
+                {newPhotoPreview && (
+                  <button
+                    type="button"
+                    onClick={clearNewPhotoSelection}
+                    className="underline"
+                  >
+                    Cancelar nueva foto
+                  </button>
+                )}
+                {removePhoto && (
+                  <>
+                    <span className="text-xs text-red-600">Se eliminará al guardar.</span>
+                    <button
+                      type="button"
+                      onClick={onCancelRemovePhoto}
+                      className="underline"
+                    >
+                      Deshacer
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
         <button disabled={busy} className="px-4 py-2 rounded-xl border shadow bg-white disabled:opacity-60">
           {busy ? 'Guardando…' : 'Guardar datos'}
