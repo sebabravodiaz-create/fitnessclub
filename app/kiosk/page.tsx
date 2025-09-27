@@ -7,6 +7,7 @@ type AccessResult = {
   membership?: string
   endDate?: string
   status: 'allowed' | 'expired' | 'unknown_card'
+  photoUrl?: string | null
 }
 
 function formatDate(dateStr?: string) {
@@ -18,6 +19,8 @@ function formatDate(dateStr?: string) {
   })
 }
 
+const PLACEHOLDER_PHOTO = '/images/athlete-placeholder.svg'
+
 export default function KioskPage() {
   // 1) Hooks SIEMPRE arriba y en el mismo orden
   const [mounted, setMounted] = useState(false)
@@ -26,6 +29,7 @@ export default function KioskPage() {
   const [message, setMessage] = useState<string>('Acerca la tarjeta...')
   const [lastUID, setLastUID] = useState<string>('')
   const [lastEndDate, setLastEndDate] = useState<string>('')
+  const [lastPhotoUrl, setLastPhotoUrl] = useState<string>('')
   const [history, setHistory] = useState<AccessResult[]>([])
   const bufferRef = useRef<string>('')
   const timeoutRef = useRef<any>(null)
@@ -79,6 +83,7 @@ export default function KioskPage() {
     setMessage('Validando...')
     setStatus('idle')
     setLastEndDate('')
+    setLastPhotoUrl('')
 
     try {
       const res = await fetch('/api/access/validate', {
@@ -92,44 +97,52 @@ export default function KioskPage() {
         setStatus('ok')
         setMessage(`✅ ACCESO PERMITIDO\n${data.athlete.name}`)
         setLastEndDate(data.membership?.end_date || '')
+        setLastPhotoUrl(data.athlete?.photo_url || '')
         addToHistory({
           name: data.athlete.name,
           uid: data.uid,
           membership: 'Vigente',
           endDate: data.membership?.end_date,
           status: 'allowed',
+          photoUrl: data.athlete?.photo_url || null,
         })
       } else if (data.result === 'expired') {
         setStatus('fail')
         setMessage(`⚠️ MEMBRESÍA EXPIRADA\n${data.athlete?.name || ''}`)
         setLastEndDate(data.membership?.end_date || '')
+        setLastPhotoUrl(data.athlete?.photo_url || '')
         addToHistory({
           name: data.athlete?.name || 'Desconocido',
           uid: data.uid,
           membership: 'Expirada',
           endDate: data.membership?.end_date,
           status: 'expired',
+          photoUrl: data.athlete?.photo_url || null,
         })
       } else {
         setStatus('fail')
         setMessage(`❌ TARJETA DESCONOCIDA\nUID: ${data.uid}`)
         setLastEndDate('')
+        setLastPhotoUrl('')
         addToHistory({
           name: 'Desconocido',
           uid: data.uid,
           membership: 'N/A',
           status: 'unknown_card',
+          photoUrl: null,
         })
       }
     } catch {
       setStatus('fail')
       setMessage(`Error de validación\nUID: ${cleanedUID}`)
+      setLastPhotoUrl('')
     } finally {
       setTimeout(() => {
         setStatus('idle')
         setMessage('Acerca la tarjeta...')
         setLastUID('')
         setLastEndDate('')
+        setLastPhotoUrl('')
       }, 3000)
     }
   }
@@ -148,13 +161,20 @@ export default function KioskPage() {
       {/* Panel central */}
       <div
         className={[
-          'flex-1 flex items-center justify-center',
-          status === 'ok' ? 'bg-green-200' : status === 'fail' ? 'bg-red-200' : 'bg-gray-50',
-        ].join(' ')}
-      >
-        <div className="text-center px-6">
-          <h1 className="text-5xl font-bold mb-6">Control de Acceso</h1>
-          <p className="text-3xl font-semibold whitespace-pre-line">{message}</p>
+      'flex-1 flex items-center justify-center',
+      status === 'ok' ? 'bg-green-200' : status === 'fail' ? 'bg-red-200' : 'bg-gray-50',
+    ].join(' ')}
+  >
+    <div className="text-center px-6">
+        <div className="flex justify-center mb-6">
+          <img
+            src={lastPhotoUrl || PLACEHOLDER_PHOTO}
+            alt="Foto del deportista"
+            className="w-40 h-40 rounded-full object-cover border-4 border-white shadow"
+          />
+        </div>
+      <h1 className="text-5xl font-bold mb-6">Control de Acceso</h1>
+      <p className="text-3xl font-semibold whitespace-pre-line">{message}</p>
 
           {lastUID && (
             <p className="text-xl text-gray-600 mt-4">
@@ -189,8 +209,17 @@ export default function KioskPage() {
                 h.status === 'allowed' ? 'bg-green-100' : 'bg-red-100',
               ].join(' ')}
             >
-              <p className="font-semibold">{h.name}</p>
-              <p className="text-sm text-gray-700">Tarjeta: {h.uid}</p>
+              <div className="flex items-center gap-3 mb-2">
+                <img
+                  src={h.photoUrl || PLACEHOLDER_PHOTO}
+                  alt={h.name}
+                  className="w-12 h-12 rounded-full object-cover border"
+                />
+                <div className="text-left">
+                  <p className="font-semibold">{h.name}</p>
+                  <p className="text-sm text-gray-700">Tarjeta: {h.uid}</p>
+                </div>
+              </div>
               <p className="text-sm text-gray-700">Membresía: {h.membership}</p>
               {h.endDate && (
                 <p className="text-sm text-gray-500">Vence: {formatDate(h.endDate)}</p>

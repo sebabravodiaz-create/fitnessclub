@@ -3,9 +3,10 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import { uploadAthletePhoto } from '@/lib/athletePhotos'
 
 type Plan = 'Mensual' | 'Anual'
 
@@ -24,6 +25,9 @@ export default function AthleteNewPage() {
   const [phone, setPhone] = useState('')
   const [rfid, setRfid] = useState('')
 
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+
   const [plan, setPlan] = useState<Plan>('Mensual')
   const [start, setStart] = useState<string>(toISO(new Date()))
   const [end, setEnd] = useState<string>(toISO(addMonths(new Date(), 1)))
@@ -40,6 +44,20 @@ export default function AthleteNewPage() {
     setPlan(p)
     const base = start ? new Date(start) : new Date()
     setEnd(toISO(addMonths(base, p === 'Anual' ? 12 : 1)))
+  }
+
+  useEffect(() => {
+    return () => {
+      if (photoPreview) URL.revokeObjectURL(photoPreview)
+    }
+  }, [photoPreview])
+
+  const onPhotoChange = (file: File | null) => {
+    setPhotoFile(file)
+    setPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return file ? URL.createObjectURL(file) : null
+    })
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -67,6 +85,16 @@ export default function AthleteNewPage() {
         .single()
       if (aErr) throw aErr
       const athleteId = created!.id as string
+
+      // 1.1) Subir foto opcional
+      if (photoFile) {
+        const path = await uploadAthletePhoto(supabase, athleteId, photoFile)
+        const { error: photoErr } = await supabase
+          .from('athletes')
+          .update({ photo_path: path })
+          .eq('id', athleteId)
+        if (photoErr) throw photoErr
+      }
 
       // 2) Tarjeta activa
       const { error: cErr } = await supabase
@@ -120,6 +148,34 @@ export default function AthleteNewPage() {
           </label>
         </div>
 
+        <div className="space-y-2">
+          <label className="text-sm block">
+            Foto (opcional)
+            <input
+              type="file"
+              accept="image/*"
+              className="mt-1 text-sm"
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null
+                onPhotoChange(file)
+                event.target.value = ''
+              }}
+            />
+          </label>
+          {photoPreview && (
+            <div className="flex items-center gap-3">
+              <img src={photoPreview} alt="Vista previa de la foto" className="w-24 h-24 rounded-full object-cover border" />
+              <button
+                type="button"
+                onClick={() => onPhotoChange(null)}
+                className="text-sm text-red-600 underline"
+              >
+                Quitar foto
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="grid sm:grid-cols-3 gap-3">
           <label className="text-sm">
             Plan
@@ -130,7 +186,12 @@ export default function AthleteNewPage() {
           </label>
           <label className="text-sm">
             Inicio
-            <input type="date" className="border p-2 w-full rounded-lg" value={start} onChange={e=>onChangeStart(e.target.value)} />
+            <input
+              type="date"
+              className="border p-2 w-full rounded-lg"
+              value={start}
+              onChange={(e) => onChangeStart(e.target.value)}
+            />
           </label>
           <label className="text-sm">
             Vencimiento

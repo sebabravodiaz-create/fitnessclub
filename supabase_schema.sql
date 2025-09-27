@@ -10,6 +10,7 @@ create table if not exists public.athletes (
   birthdate date,
   email text,
   phone text,
+  photo_path text,
   created_at timestamptz default now()
 );
 
