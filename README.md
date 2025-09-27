@@ -26,6 +26,7 @@ Aplicación web construida con Next.js 14 y Supabase para la gestión integral d
 - **Inicio de sesión** con correo y contraseña usando Supabase Auth (`/login`), protegido para rutas administrativas.
 - **Gestión de atletas**: búsqueda global por nombre, contacto, RFID o plan; creación, edición y eliminación con manejo automático de tarjetas y membresías.
 - **Carga de rutinas en PDF**: interfaz para subir, listar y eliminar archivos en el bucket público `routines-public` de Supabase Storage.
+- **Gestión de imágenes del home**: se pueden subir, previsualizar y eliminar las imágenes del hero y galería usadas en la landing.
 - **Vista de asignaciones**: páginas auxiliares para crear y revisar información individual de atletas y sus membresías.
 
 ### APIs y herramientas internas
@@ -49,7 +50,8 @@ Aplicación web construida con Next.js 14 y Supabase para la gestión integral d
 1. Crea un proyecto en Supabase y obtén las llaves URL/Anon/Service.
 2. Abre **SQL Editor** y ejecuta el contenido de [`supabase_schema.sql`](./supabase_schema.sql) para crear tablas, relaciones y políticas RLS.
 3. En **Storage → Buckets** crea un bucket llamado `routines-public` con visibilidad **public**.
-4. (Opcional) Registra el dominio de producción en **Authentication → URL Configuration** para permitir el flujo de login.
+4. Crea otro bucket público llamado `home-assets` donde se almacenarán el hero y las imágenes de la galería del home.
+5. (Opcional) Registra el dominio de producción en **Authentication → URL Configuration** para permitir el flujo de login.
 
 ## Variables de entorno
 Copia `.env.example` a `.env.local` y completa según el entorno.
