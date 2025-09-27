@@ -10,6 +10,8 @@ import { supabase } from '@/lib/supabaseClient'
 const BUCKET = 'home-assets'
 const HERO_FOLDER = 'hero'
 const GALLERY_FOLDER = 'gallery'
+const HERO_PREFIX = 'hero-main'
+const IG_INDICES = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const
 const HERO_FALLBACKS = ['/images/hero.png', '/images/hero.jpg']
 
 type HomeAssetsState = {
@@ -19,11 +21,39 @@ type HomeAssetsState = {
   error: string | null
 }
 
+type StorageEntry = {
+  name: string
+  created_at: string | null
+  updated_at: string | null
+}
+
 function getPublicUrl(path: string, transform: { width: number; height?: number; resize?: 'contain' | 'cover' }) {
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path, {
     transform,
   })
   return data?.publicUrl ?? null
+}
+
+function matchesPrefix(name: string, prefix: string) {
+  return name === prefix || name.startsWith(`${prefix}-`) || name.startsWith(`${prefix}.`)
+}
+
+function selectLatest(entries: StorageEntry[], prefix: string) {
+  let latest: StorageEntry | null = null
+  let latestTimestamp = -Infinity
+
+  for (const entry of entries) {
+    if (!entry.name || !matchesPrefix(entry.name, prefix)) continue
+    const candidate = entry.updated_at ?? entry.created_at
+    const timestamp = candidate ? new Date(candidate).getTime() : NaN
+    if (Number.isNaN(timestamp)) continue
+    if (timestamp >= latestTimestamp) {
+      latest = entry
+      latestTimestamp = timestamp
+    }
+  }
+
+  return latest
 }
 
 function useHomeAssets(): HomeAssetsState {
@@ -43,10 +73,10 @@ function useHomeAssets(): HomeAssetsState {
 
         const heroPromise = supabase.storage
           .from(BUCKET)
-          .list(HERO_FOLDER, { limit: 5, offset: 0, sortBy: { column: 'created_at', order: 'desc' } })
+          .list(HERO_FOLDER, { limit: 40, offset: 0, sortBy: { column: 'created_at', order: 'desc' } })
         const galleryPromise = supabase.storage
           .from(BUCKET)
-          .list(GALLERY_FOLDER, { limit: 30, offset: 0, sortBy: { column: 'created_at', order: 'desc' } })
+          .list(GALLERY_FOLDER, { limit: 120, offset: 0, sortBy: { column: 'created_at', order: 'desc' } })
 
         const [heroResult, galleryResult] = await Promise.allSettled([heroPromise, galleryPromise])
 
@@ -54,7 +84,8 @@ function useHomeAssets(): HomeAssetsState {
 
         let heroUrl: string | null = null
         if (heroResult.status === 'fulfilled' && !heroResult.value.error) {
-          const entry = heroResult.value.data?.find((item) => item.name)
+          const heroEntries = (heroResult.value.data ?? []) as StorageEntry[]
+          const entry = selectLatest(heroEntries, HERO_PREFIX)
           if (entry?.name) {
             heroUrl = getPublicUrl(`${HERO_FOLDER}/${entry.name}`, {
               width: 1600,
@@ -66,8 +97,11 @@ function useHomeAssets(): HomeAssetsState {
 
         const galleryUrls: string[] = []
         if (galleryResult.status === 'fulfilled' && !galleryResult.value.error) {
-          for (const entry of galleryResult.value.data ?? []) {
-            if (!entry.name) continue
+          const galleryEntries = (galleryResult.value.data ?? []) as StorageEntry[]
+          for (const index of IG_INDICES) {
+            const prefix = `ig-${index}`
+            const entry = selectLatest(galleryEntries, prefix)
+            if (!entry?.name) continue
             const url = getPublicUrl(`${GALLERY_FOLDER}/${entry.name}`, {
               width: 900,
               height: 900,
