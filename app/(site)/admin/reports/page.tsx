@@ -59,6 +59,15 @@ const reportGroups: ReportCardProps[] = [
     ],
   },
   {
+    title: 'Logs de plataforma',
+    summary:
+      'Descarga los registros generados por los inicios de sesión administrativos y las acciones del auditor de membresías.',
+    actions: [
+      { href: '/api/admin/reports/logs/login', label: 'Descargar log_acceso', description: 'CSV' },
+      { href: '/api/admin/reports/logs/membership-audit', label: 'Descargar log_auditoría', description: 'CSV' },
+    ],
+  },
+  {
     title: 'Resumen mensual',
     summary:
       'Accesos (OK/NOK/Unknown), nuevos socios y membresías no activas creadas por período YYYY-MM.',
