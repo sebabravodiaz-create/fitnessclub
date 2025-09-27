@@ -37,6 +37,11 @@ export default function AdminHome() {
           subtitle="Crear, editar, asignar tarjetas"
         />
         <Tile
+          href="/admin/home-images"
+          title="Imágenes del home"
+          subtitle="Administra el hero y la galería pública"
+        />
+        <Tile
           href="/kiosk"
           title="Control de acceso"
           subtitle="Página para validar RFID"
