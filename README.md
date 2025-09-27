@@ -19,12 +19,14 @@ Aplicación web construida con Next.js 14 y Supabase para la gestión integral d
 
 ### Sitio público
 - **Landing page** con hero, oferta de clases por nivel e integración con la cuadrícula de Instagram (`/`).
+- **Hero y galería dinámicos** que consumen imágenes del bucket público `home-assets` de Supabase con degradados locales de respaldo.
 - **Botón flotante de WhatsApp** disponible únicamente en el home para contacto directo con el club.
 - **Página de rutinas públicas** (`/routines`) que lista las rutinas marcadas como públicas en la tabla `routines` de Supabase.
 
 ### Panel administrativo (`/admin`)
 - **Inicio de sesión** con correo y contraseña usando Supabase Auth (`/login`), protegido para rutas administrativas.
 - **Gestión de atletas**: búsqueda global por nombre, contacto, RFID o plan; creación, edición y eliminación con manejo automático de tarjetas y membresías.
+- **Mantenedor de imágenes del home** (`/admin/home-images`): carga, vista previa y eliminación de recursos del hero y la galería en el bucket `home-assets`.
 - **Carga de rutinas en PDF**: interfaz para subir, listar y eliminar archivos en el bucket público `routines-public` de Supabase Storage.
 - **Vista de asignaciones**: páginas auxiliares para crear y revisar información individual de atletas y sus membresías.
 
@@ -48,8 +50,9 @@ Aplicación web construida con Next.js 14 y Supabase para la gestión integral d
 ## Configuración de Supabase
 1. Crea un proyecto en Supabase y obtén las llaves URL/Anon/Service.
 2. Abre **SQL Editor** y ejecuta el contenido de [`supabase_schema.sql`](./supabase_schema.sql) para crear tablas, relaciones y políticas RLS.
-3. En **Storage → Buckets** crea un bucket llamado `routines-public` con visibilidad **public**.
-4. (Opcional) Registra el dominio de producción en **Authentication → URL Configuration** para permitir el flujo de login.
+3. En **Storage → Buckets** crea los buckets públicos `routines-public` (PDFs) y `home-assets` (imágenes del landing).
+4. Dentro de `home-assets` genera dos carpetas: `hero` y `gallery` para organizar los recursos.
+5. (Opcional) Registra el dominio de producción en **Authentication → URL Configuration** para permitir el flujo de login.
 
 ## Variables de entorno
 Copia `.env.example` a `.env.local` y completa según el entorno.
