@@ -119,6 +119,40 @@ function findLatestForPrefix(entries: StorageEntry[], prefix: string) {
   return latest
 }
 
+function sanitizeExtension(raw?: string | null) {
+  if (!raw) return undefined
+  const value = raw.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+  return value || undefined
+}
+
+function inferExtension(file: File) {
+  const fromName = sanitizeExtension(file.name.includes('.') ? file.name.split('.').pop() ?? null : null)
+  if (fromName) return fromName === 'jpeg' ? 'jpg' : fromName
+
+  const fromType = sanitizeExtension(file.type.includes('/') ? file.type.split('/').pop() ?? null : null)
+  if (fromType) return fromType === 'jpeg' ? 'jpg' : fromType
+
+  return 'jpg'
+}
+
+function resolveContentType(file: File, extension: string) {
+  if (file.type) return file.type
+
+  switch (extension) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg'
+    case 'png':
+      return 'image/png'
+    case 'webp':
+      return 'image/webp'
+    case 'gif':
+      return 'image/gif'
+    default:
+      return 'application/octet-stream'
+  }
+}
+
 async function getPreviewUrl(path: string, width: number, height?: number) {
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path, {
     transform: {
@@ -128,6 +162,23 @@ async function getPreviewUrl(path: string, width: number, height?: number) {
     },
   })
   return data?.publicUrl ?? ''
+}
+
+async function cleanupPreviousVariants(slot: SlotDefinition, keepPath: string) {
+  const keepName = keepPath.replace(`${slot.folder}/`, '')
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .list(slot.folder, { limit: 100, offset: 0, sortBy: { column: 'created_at', order: 'desc' } })
+
+  if (error || !data) return
+
+  const toDelete = data
+    .map((entry) => entry.name)
+    .filter((name): name is string => Boolean(name) && matchesPrefix(name, slot.prefix) && name !== keepName)
+
+  if (!toDelete.length) return
+
+  await supabase.storage.from(BUCKET).remove(toDelete.map((name) => `${slot.folder}/${name}`))
 }
 
 export default function HomeImagesAdminPage() {
@@ -216,18 +267,19 @@ export default function HomeImagesAdminPage() {
     setMessage(`Subiendo ${slot.label.toLowerCase()}…`)
 
     try {
-      const extension = file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.')) : ''
-      const path = `${slot.folder}/${slot.prefix}-${Date.now()}${extension}`
+      const extension = inferExtension(file)
+      const path = `${slot.folder}/${slot.prefix}.${extension}`
       const { error } = await supabase.storage
         .from(BUCKET)
-        .upload(path, file, { cacheControl: '3600', upsert: true, contentType: file.type })
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType: resolveContentType(file, extension),
+        })
 
       if (error) throw error
 
-      const previous = slotAssets[slot.id]
-      if (previous?.path && previous.path !== path) {
-        await supabase.storage.from(BUCKET).remove([previous.path])
-      }
+      await cleanupPreviousVariants(slot, path)
 
       setMessage(`${slot.label} actualizado ✔️`)
       await loadAssets()
