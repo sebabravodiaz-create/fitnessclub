@@ -3,9 +3,10 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import { deleteAthletePhoto, uploadAthletePhoto } from '@/lib/athletePhotos'
 
 type Plan = 'Mensual' | 'Anual'
 
@@ -30,6 +31,20 @@ export default function AthleteNewPage() {
 
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+
+  const onChangePhoto = (file: File | null) => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview)
+    setPhotoFile(file)
+    setPhotoPreview(file ? URL.createObjectURL(file) : null)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (photoPreview) URL.revokeObjectURL(photoPreview)
+    }
+  }, [photoPreview])
 
   const onChangeStart = (v: string) => {
     setStart(v)
@@ -86,6 +101,23 @@ export default function AthleteNewPage() {
         })
       if (mErr) throw mErr
 
+      if (photoFile) {
+        try {
+          const uploaded = await uploadAthletePhoto(athleteId, photoFile)
+          const { error: photoErr } = await supabase
+            .from('athletes')
+            .update({ photo_url: uploaded.url })
+            .eq('id', athleteId)
+          if (photoErr) {
+            await deleteAthletePhoto(uploaded.url)
+            throw photoErr
+          }
+        } catch (err: any) {
+          console.error('Error al subir la foto del atleta:', err)
+          throw new Error('El atleta se creó pero no se pudo guardar la foto. Intenta editarlo para cargarla nuevamente.')
+        }
+      }
+
       setMsg('Atleta creado con éxito.')
       router.replace('/admin/athletes')
     } catch (e: any) {
@@ -118,6 +150,40 @@ export default function AthleteNewPage() {
             Teléfono
             <input className="border p-2 w-full rounded-lg" value={phone} onChange={e=>setPhone(e.target.value)} />
           </label>
+        </div>
+
+        <div className="space-y-2">
+          <span className="text-sm font-medium">Foto del deportista (opcional)</span>
+          <div className="flex items-center gap-4 flex-wrap">
+            <img
+              src={photoPreview || '/images/athlete-placeholder.svg'}
+              alt={photoPreview ? 'Vista previa de la foto seleccionada' : 'Foto genérica'}
+              className="w-28 h-28 rounded-full object-cover border bg-white"
+            />
+            <div className="flex flex-col gap-2">
+              <label className="text-sm">
+                <span className="sr-only">Seleccionar foto</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => onChangePhoto(e.target.files?.[0] ?? null)}
+                  className="block text-sm"
+                />
+              </label>
+              {photoFile && (
+                <button
+                  type="button"
+                  onClick={() => onChangePhoto(null)}
+                  className="text-sm underline self-start"
+                >
+                  Quitar foto seleccionada
+                </button>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-gray-500">
+            Puedes cargar JPG o PNG de hasta 5&nbsp;MB. Podrás cambiarla luego desde la edición del deportista.
+          </p>
         </div>
 
         <div className="grid sm:grid-cols-3 gap-3">

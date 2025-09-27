@@ -11,6 +11,7 @@ type AthleteLite = {
   name: string | null
   email?: string | null
   phone?: string | null
+  photo_url?: string | null
 }
 
 type CardWithAthlete = {
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
         uid,
         active,
         athlete_id,
-        athletes:athletes ( name, email, phone )
+        athletes:athletes ( name, email, phone, photo_url )
       `)
       .eq('uid', cleanedUID)
       .eq('active', true)
@@ -64,7 +65,9 @@ export async function POST(req: NextRequest) {
 
     let result: AccessResult
     let note = ''
-    let athlete: { id?: string; name?: string | null } | null = null
+    let athlete:
+      | { id?: string; name?: string | null; photo_url?: string | null }
+      | null = null
     let membership: { plan?: string | null; end_date?: string | null } | null = null
 
     if (!card) {
@@ -74,7 +77,11 @@ export async function POST(req: NextRequest) {
     } else {
       const athleteRel = card.athletes
       const athleteObj = Array.isArray(athleteRel) ? athleteRel[0] : athleteRel
-      athlete = { id: card.athlete_id, name: athleteObj?.name ?? null }
+      athlete = {
+        id: card.athlete_id,
+        name: athleteObj?.name ?? null,
+        photo_url: athleteObj?.photo_url ?? null,
+      }
 
       // 2) Buscar membresías del atleta y evaluar vigencia
       const { data: mems, error: memErr } = await supabase

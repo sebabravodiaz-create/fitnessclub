@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import { deleteAthletePhoto, uploadAthletePhoto } from '@/lib/athletePhotos'
 
 type Athlete = {
   id: string
@@ -13,6 +14,7 @@ type Athlete = {
   phone: string | null
   rut: string | null
   created_at: string
+  photo_url: string | null
 }
 
 type Plan = 'Mensual' | 'Anual'
@@ -39,6 +41,10 @@ export default function AthleteEditPage() {
   const router = useRouter()
 
   const [ath, setAth] = useState<Athlete | null>(null)
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const [newPhotoFile, setNewPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [removePhoto, setRemovePhoto] = useState(false)
 
   // RFID (mostrar activo; al guardar: desactivar previos + crear uno nuevo)
   const [rfid, setRfid] = useState<string>('')
@@ -77,11 +83,12 @@ export default function AthleteEditPage() {
     // 1) Atleta
     const { data: a, error: aErr } = await supabase
       .from('athletes')
-      .select('id, name, email, phone, rut, created_at')
+      .select('id, name, email, phone, rut, created_at, photo_url')
       .eq('id', id)
       .maybeSingle()
     if (aErr) { setMsg(aErr.message); setLoading(false); return }
     setAth(a as Athlete)
+    setPhotoUrl((a as any)?.photo_url ?? null)
 
     // 2) Tarjeta activa
     const { data: card } = await supabase
@@ -131,6 +138,12 @@ export default function AthleteEditPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
+  useEffect(() => {
+    return () => {
+      if (photoPreview) URL.revokeObjectURL(photoPreview)
+    }
+  }, [photoPreview])
+
   // Recalcular fin al cambiar plan o start (para la NUEVA membresía)
   useEffect(() => {
     if (!memStart) return
@@ -145,19 +158,49 @@ export default function AthleteEditPage() {
     if (!ath) return
     setBusy(true); setMsg(null)
 
-    const { error } = await supabase
-      .from('athletes')
-      .update({
-        name: ath.name?.trim() || null,
-        email: ath.email?.trim() || null,
-        phone: ath.phone?.trim() || null,
-        rut: ath.rut?.trim() || null,
-      })
-      .eq('id', ath.id)
+    let nextPhotoUrl = photoUrl
 
-    if (error) setMsg(error.message)
-    else setMsg('Datos guardados.')
-    setBusy(false)
+    try {
+      if (removePhoto && nextPhotoUrl) {
+        await deleteAthletePhoto(nextPhotoUrl)
+        nextPhotoUrl = null
+      }
+
+      if (newPhotoFile) {
+        if (nextPhotoUrl && !removePhoto) {
+          await deleteAthletePhoto(nextPhotoUrl)
+        }
+        const uploaded = await uploadAthletePhoto(ath.id, newPhotoFile)
+        nextPhotoUrl = uploaded.url
+      }
+
+      const { error } = await supabase
+        .from('athletes')
+        .update({
+          name: ath.name?.trim() || null,
+          email: ath.email?.trim() || null,
+          phone: ath.phone?.trim() || null,
+          rut: ath.rut?.trim() || null,
+          photo_url: nextPhotoUrl,
+        })
+        .eq('id', ath.id)
+
+      if (error) throw error
+
+      setMsg('Datos guardados.')
+      setPhotoUrl(nextPhotoUrl)
+      setAth(prev => prev ? { ...prev, photo_url: nextPhotoUrl } : prev)
+      if (photoPreview) {
+        URL.revokeObjectURL(photoPreview)
+      }
+      setPhotoPreview(null)
+      setNewPhotoFile(null)
+      setRemovePhoto(false)
+    } catch (err: any) {
+      setMsg(err?.message || 'Error al guardar')
+    } finally {
+      setBusy(false)
+    }
   }
 
   // ---- Guardar/Asignar RFID con HISTÓRICO ----
@@ -308,6 +351,58 @@ export default function AthleteEditPage() {
               onChange={(e)=>setAth({...ath, phone: e.target.value})}
             />
           </label>
+        </div>
+        <div className="space-y-2">
+          <span className="text-sm font-medium">Foto del deportista</span>
+          <div className="flex items-center gap-4 flex-wrap">
+            <img
+              src={
+                photoPreview ||
+                (removePhoto ? '/images/athlete-placeholder.svg' : photoUrl || '/images/athlete-placeholder.svg')
+              }
+              alt="Foto del deportista"
+              className="w-28 h-28 rounded-full object-cover border bg-white"
+            />
+            <div className="flex flex-col gap-2">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  if (photoPreview) URL.revokeObjectURL(photoPreview)
+                  const file = e.target.files?.[0] ?? null
+                  setNewPhotoFile(file)
+                  setRemovePhoto(false)
+                  setPhotoPreview(file ? URL.createObjectURL(file) : null)
+                }}
+                className="block text-sm"
+              />
+              {photoPreview && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    URL.revokeObjectURL(photoPreview)
+                    setPhotoPreview(null)
+                    setNewPhotoFile(null)
+                  }}
+                  className="text-sm underline self-start"
+                >
+                  Quitar foto seleccionada
+                </button>
+              )}
+              {!photoPreview && photoUrl && (
+                <button
+                  type="button"
+                  onClick={() => setRemovePhoto((prev) => !prev)}
+                  className="text-sm underline self-start"
+                >
+                  {removePhoto ? 'Cancelar eliminación' : 'Eliminar foto actual'}
+                </button>
+              )}
+              {removePhoto && !photoPreview && (
+                <p className="text-xs text-red-600">La foto se eliminará al guardar.</p>
+              )}
+            </div>
+          </div>
         </div>
         <button disabled={busy} className="px-4 py-2 rounded-xl border shadow bg-white disabled:opacity-60">
           {busy ? 'Guardando…' : 'Guardar datos'}

@@ -11,6 +11,7 @@ type AthleteRow = {
   name: string
   email: string | null
   phone: string | null
+  photo_url?: string | null
   cards: EmbeddedCard[] | null
   memberships: EmbeddedMembership[] | null
 }
@@ -32,6 +33,7 @@ export default function AthletesClient() {
           name,
           email,
           phone,
+          photo_url,
           cards:cards(uid, active, created_at),
           memberships:memberships(plan, start_date, end_date, status)
         `)

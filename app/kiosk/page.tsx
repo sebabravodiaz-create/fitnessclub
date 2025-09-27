@@ -7,6 +7,7 @@ type AccessResult = {
   membership?: string
   endDate?: string
   status: 'allowed' | 'expired' | 'unknown_card'
+  photoUrl?: string | null
 }
 
 function formatDate(dateStr?: string) {
@@ -26,6 +27,7 @@ export default function KioskPage() {
   const [message, setMessage] = useState<string>('Acerca la tarjeta...')
   const [lastUID, setLastUID] = useState<string>('')
   const [lastEndDate, setLastEndDate] = useState<string>('')
+  const [lastPhotoUrl, setLastPhotoUrl] = useState<string>('')
   const [history, setHistory] = useState<AccessResult[]>([])
   const bufferRef = useRef<string>('')
   const timeoutRef = useRef<any>(null)
@@ -79,6 +81,7 @@ export default function KioskPage() {
     setMessage('Validando...')
     setStatus('idle')
     setLastEndDate('')
+    setLastPhotoUrl('')
 
     try {
       const res = await fetch('/api/access/validate', {
@@ -92,33 +95,39 @@ export default function KioskPage() {
         setStatus('ok')
         setMessage(`✅ ACCESO PERMITIDO\n${data.athlete.name}`)
         setLastEndDate(data.membership?.end_date || '')
+        setLastPhotoUrl(data.athlete?.photo_url || '')
         addToHistory({
           name: data.athlete.name,
           uid: data.uid,
           membership: 'Vigente',
           endDate: data.membership?.end_date,
           status: 'allowed',
+          photoUrl: data.athlete?.photo_url,
         })
       } else if (data.result === 'expired') {
         setStatus('fail')
         setMessage(`⚠️ MEMBRESÍA EXPIRADA\n${data.athlete?.name || ''}`)
         setLastEndDate(data.membership?.end_date || '')
+        setLastPhotoUrl(data.athlete?.photo_url || '')
         addToHistory({
           name: data.athlete?.name || 'Desconocido',
           uid: data.uid,
           membership: 'Expirada',
           endDate: data.membership?.end_date,
           status: 'expired',
+          photoUrl: data.athlete?.photo_url,
         })
       } else {
         setStatus('fail')
         setMessage(`❌ TARJETA DESCONOCIDA\nUID: ${data.uid}`)
         setLastEndDate('')
+        setLastPhotoUrl('')
         addToHistory({
           name: 'Desconocido',
           uid: data.uid,
           membership: 'N/A',
           status: 'unknown_card',
+          photoUrl: null,
         })
       }
     } catch {
@@ -130,6 +139,7 @@ export default function KioskPage() {
         setMessage('Acerca la tarjeta...')
         setLastUID('')
         setLastEndDate('')
+        setLastPhotoUrl('')
       }, 3000)
     }
   }
@@ -155,6 +165,14 @@ export default function KioskPage() {
         <div className="text-center px-6">
           <h1 className="text-5xl font-bold mb-6">Control de Acceso</h1>
           <p className="text-3xl font-semibold whitespace-pre-line">{message}</p>
+
+          <div className="mt-6 flex justify-center">
+            <img
+              src={lastPhotoUrl || '/images/athlete-placeholder.svg'}
+              alt={lastPhotoUrl ? 'Foto del deportista' : 'Foto genérica'}
+              className="w-48 h-48 rounded-full object-cover border-4 border-white shadow-lg bg-white"
+            />
+          </div>
 
           {lastUID && (
             <p className="text-xl text-gray-600 mt-4">
@@ -189,12 +207,21 @@ export default function KioskPage() {
                 h.status === 'allowed' ? 'bg-green-100' : 'bg-red-100',
               ].join(' ')}
             >
-              <p className="font-semibold">{h.name}</p>
-              <p className="text-sm text-gray-700">Tarjeta: {h.uid}</p>
-              <p className="text-sm text-gray-700">Membresía: {h.membership}</p>
-              {h.endDate && (
-                <p className="text-sm text-gray-500">Vence: {formatDate(h.endDate)}</p>
-              )}
+              <div className="flex items-center gap-3">
+                <img
+                  src={h.photoUrl || '/images/athlete-placeholder.svg'}
+                  alt={h.photoUrl ? `Foto de ${h.name}` : 'Foto genérica'}
+                  className="w-14 h-14 rounded-full object-cover border-2 border-white bg-white flex-shrink-0"
+                />
+                <div>
+                  <p className="font-semibold">{h.name}</p>
+                  <p className="text-sm text-gray-700">Tarjeta: {h.uid}</p>
+                  <p className="text-sm text-gray-700">Membresía: {h.membership}</p>
+                  {h.endDate && (
+                    <p className="text-sm text-gray-500">Vence: {formatDate(h.endDate)}</p>
+                  )}
+                </div>
+              </div>
             </div>
           ))}
         </div>

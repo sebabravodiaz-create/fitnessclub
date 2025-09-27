@@ -10,7 +10,8 @@ create table if not exists public.athletes (
   birthdate date,
   email text,
   phone text,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  photo_url text
 );
 
 create table if not exists public.cards (
@@ -159,3 +160,7 @@ drop trigger if exists tr_memberships_audit on public.memberships;
 create trigger tr_memberships_audit
 after insert or update or delete on public.memberships
 for each row execute function public.log_membership_audit();
+
+-- Storage bucket para fotos de deportistas
+-- En Supabase Studio > Storage, crea (si no existe) un bucket llamado "athlete-photos"
+-- con acceso público para que las URL generadas funcionen en el kiosk.

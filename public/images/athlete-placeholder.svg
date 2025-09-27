@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-labelledby="title">
+  <title>Foto genérica de deportista</title>
+  <rect width="200" height="200" fill="#e5e7eb" />
+  <circle cx="100" cy="72" r="44" fill="#d1d5db" />
+  <path d="M24 190c0-42 34-76 76-76s76 34 76 76" fill="#d1d5db" />
+  <circle cx="100" cy="68" r="28" fill="#f9fafb" />
+</svg>
