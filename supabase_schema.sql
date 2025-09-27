@@ -84,3 +84,44 @@ on public.memberships for all to authenticated using (true) with check (true);
 
 create policy if not exists "Admins only access_logs"
 on public.access_logs for all to authenticated using (true) with check (true);
+
+create table if not exists public.media_assets (
+  id uuid primary key default gen_random_uuid(),
+  bucket text not null default 'media',
+  path text not null unique,
+  title text,
+  alt text,
+  tags text[] not null default '{}',
+  width int,
+  height int,
+  format text,
+  bytes int,
+  is_active boolean not null default true,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now()
+);
+
+alter table public.media_assets enable row level security;
+
+create policy if not exists "public_read_active_media"
+on public.media_assets for select
+  to public
+  using (is_active = true);
+
+create policy if not exists "authenticated_manage_media"
+on public.media_assets for all
+  to authenticated
+  using (true)
+  with check (true);
+
+-- Storage bucket `media`
+create policy if not exists "public_read_media_bucket"
+on storage.objects for select
+  to public
+  using (bucket_id = 'media');
+
+create policy if not exists "authenticated_manage_media_bucket"
+on storage.objects for all
+  to authenticated
+  using (bucket_id = 'media')
+  with check (bucket_id = 'media');

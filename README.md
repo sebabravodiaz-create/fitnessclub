@@ -26,7 +26,7 @@ Aplicación web construida con Next.js 14 y Supabase para la gestión integral d
 - **Inicio de sesión** con correo y contraseña usando Supabase Auth (`/login`), protegido para rutas administrativas.
 - **Gestión de atletas**: búsqueda global por nombre, contacto, RFID o plan; creación, edición y eliminación con manejo automático de tarjetas y membresías.
 - **Carga de rutinas en PDF**: interfaz para subir, listar y eliminar archivos en el bucket público `routines-public` de Supabase Storage.
-- **Gestión de imágenes del home**: se pueden subir, previsualizar y eliminar las imágenes del hero y galería usadas en la landing.
+- **Gestión de media del home**: mantenedor `/admin/media` para subir imágenes al bucket `media`, versionarlas en la tabla `media_assets` y actualizar hero/galería con metadatos y previsualización.
 - **Vista de asignaciones**: páginas auxiliares para crear y revisar información individual de atletas y sus membresías.
 
 ### APIs y herramientas internas
@@ -50,9 +50,9 @@ Aplicación web construida con Next.js 14 y Supabase para la gestión integral d
 1. Crea un proyecto en Supabase y obtén las llaves URL/Anon/Service.
 2. Abre **SQL Editor** y ejecuta el contenido de [`supabase_schema.sql`](./supabase_schema.sql) para crear tablas, relaciones y políticas RLS.
 3. En **Storage → Buckets** crea un bucket llamado `routines-public` con visibilidad **public**.
-4. Crea otro bucket público llamado `home-assets` donde se almacenarán el hero y las imágenes de la galería del home. Dentro de
-   este bucket se generan carpetas `hero/` y `gallery/ig-1` … `gallery/ig-9`, cada una con un único archivo activo que puedes
-   administrar desde `/admin/home-images`.
+4. Crea un bucket público adicional llamado `media`. Dentro de él genera al menos las carpetas `hero/` y `gallery/home-1` …
+   `gallery/home-9`. El mantenedor `/admin/media` sube nuevos archivos a estas carpetas, desactiva versiones anteriores y crea
+   registros en la tabla `media_assets`.
 5. (Opcional) Registra el dominio de producción en **Authentication → URL Configuration** para permitir el flujo de login.
 
 ## Variables de entorno
@@ -117,7 +117,7 @@ El repositorio incluye `.github/workflows/ci.yml`, el cual instala dependencias,
 ## Solución de problemas
 - **Faltan variables de entorno**: Las rutas `/api` y la página `/routines` muestran mensajes descriptivos cuando no encuentran llaves de Supabase. Verifica la sección de variables.
 - **Dependencias de ESLint**: Si el comando `npm run lint` se omite localmente, revisa la salida; en CI se instalará `eslint-config-next` y se ejecutará `next lint`.
-- **Acceso a Storage**: Asegúrate de haber creado el bucket `routines-public` con acceso público. Las subidas desde `/admin/routines` fallarán si el bucket no existe.
+- **Acceso a Storage**: Asegúrate de haber creado los buckets `routines-public` y `media` con acceso público. Las subidas desde `/admin/routines` o `/admin/media` fallarán si los buckets no existen o no tienen políticas de escritura para administradores.
 - **Autenticación**: Para producción, habilita dominios permitidos en Supabase Auth y considera activar MFA o políticas adicionales antes de abrir el panel a terceros.
 
 ¡Listo! Con estos pasos puedes correr el starter, extenderlo con tus propias funcionalidades y desplegarlo de forma segura.

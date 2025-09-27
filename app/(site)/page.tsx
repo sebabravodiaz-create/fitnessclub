@@ -6,52 +6,82 @@ import IGGrid from '@/components/IGGrid'
 import WhatsAppSticky from '@/components/WhatsAppSticky'
 import { supabase } from '@/lib/supabaseClient'
 
-const FALLBACK_HERO = '/images/hero.png'
-const FALLBACK_GALLERY = Array.from({ length: 9 }).map((_, index) => `/images/ig-${index + 1}.png`)
-const GALLERY_FOLDERS = Array.from({ length: 9 }).map((_, index) => `gallery/ig-${index + 1}`)
+type HeroAsset = { src: string; alt: string }
+type GalleryItem = { src: string; alt: string }
+
+const FALLBACK_HERO: HeroAsset = { src: '/images/hero.png', alt: 'Entrenamiento' }
+const FALLBACK_GALLERY: GalleryItem[] = Array.from({ length: 9 }).map((_, index) => ({
+  src: `/images/ig-${index + 1}.png`,
+  alt: `Galería ${index + 1}`,
+}))
+const HERO_TAG = 'home:hero'
+const GALLERY_TAGS = Array.from({ length: 9 }).map((_, index) => `home:gallery:${index + 1}`)
 
 function useHomeAssets() {
-  const [heroUrl, setHeroUrl] = useState(FALLBACK_HERO)
-  const [galleryUrls, setGalleryUrls] = useState<string[]>(FALLBACK_GALLERY)
+  const [hero, setHero] = useState<HeroAsset>(FALLBACK_HERO)
+  const [gallery, setGallery] = useState<GalleryItem[]>(FALLBACK_GALLERY)
 
   useEffect(() => {
     let cancelled = false
 
     const loadAssets = async () => {
       try {
-        const bucket = supabase.storage.from('home-assets')
-
-        const { data: heroFiles, error: heroError } = await bucket.list('hero', {
-          limit: 1,
-          sortBy: { column: 'created_at', order: 'desc' },
-        })
+        const { data: heroRows, error: heroError } = await supabase
+          .from('media_assets')
+          .select('bucket, path, alt')
+          .contains('tags', [HERO_TAG])
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
         if (heroError) throw heroError
-        if (!cancelled && heroFiles && heroFiles.length) {
-          const { data } = bucket.getPublicUrl(`hero/${heroFiles[0].name}`)
-          if (data?.publicUrl) setHeroUrl(data.publicUrl)
+        const heroAsset = heroRows?.[0]
+        let nextHero = FALLBACK_HERO
+        if (heroAsset) {
+          const { data } = supabase.storage.from(heroAsset.bucket).getPublicUrl(heroAsset.path, {
+            transform: { width: 2400, quality: 80, format: 'webp' },
+          })
+          if (data?.publicUrl) {
+            nextHero = {
+              src: data.publicUrl,
+              alt: heroAsset.alt || FALLBACK_HERO.alt,
+            }
+          }
+        }
+        if (!cancelled) {
+          setHero(nextHero)
         }
 
         const galleryResults = await Promise.all(
-          GALLERY_FOLDERS.map(async (folder, index) => {
+          GALLERY_TAGS.map(async (tag, index) => {
             try {
-              const { data: files, error } = await bucket.list(folder, {
-                limit: 1,
-                sortBy: { column: 'created_at', order: 'desc' },
-              })
+              const { data: rows, error } = await supabase
+                .from('media_assets')
+                .select('bucket, path, alt')
+                .contains('tags', [tag])
+                .eq('is_active', true)
+                .order('created_at', { ascending: false })
+                .limit(1)
               if (error) throw error
-              const file = files?.[0]
-              if (!file || !file.name) return FALLBACK_GALLERY[index]
-              const { data } = bucket.getPublicUrl(`${folder}/${file.name}`)
-              return data.publicUrl ?? FALLBACK_GALLERY[index]
+              const asset = rows?.[0]
+              if (!asset) return FALLBACK_GALLERY[index]
+              const { data } = supabase.storage.from(asset.bucket).getPublicUrl(asset.path, {
+                transform: { width: 1200, quality: 80, format: 'webp' },
+              })
+              const url = data?.publicUrl
+              if (!url) return FALLBACK_GALLERY[index]
+              return {
+                src: url,
+                alt: asset.alt || FALLBACK_GALLERY[index].alt,
+              }
             } catch (error) {
-              console.warn(`No se pudo cargar ${folder}`, error)
+              console.warn(`No se pudo cargar tag ${tag}`, error)
               return FALLBACK_GALLERY[index]
             }
           })
         )
 
         if (!cancelled) {
-          setGalleryUrls(galleryResults)
+          setGallery(galleryResults)
         }
       } catch (error) {
         console.warn('No se pudieron cargar las imágenes del home', error)
@@ -65,10 +95,10 @@ function useHomeAssets() {
     }
   }, [])
 
-  return { heroUrl, galleryUrls }
+  return { hero, gallery }
 }
 
-function HeroImage({ src }: { src: string }) {
+function HeroImage({ src, alt }: { src: string; alt: string }) {
   const isLocalAsset = useMemo(() => src.startsWith('/'), [src])
   const [currentSrc, setCurrentSrc] = useState(src)
   const [triedFallback, setTriedFallback] = useState(false)
@@ -81,14 +111,14 @@ function HeroImage({ src }: { src: string }) {
   return (
     <Image
       src={currentSrc}
-      alt="Entrenamiento"
+      alt={alt}
       fill
       className="object-cover"
       priority
       onError={() => {
         if (!triedFallback) {
           setTriedFallback(true)
-          setCurrentSrc(isLocalAsset ? '/images/hero.jpg' : FALLBACK_HERO)
+          setCurrentSrc(isLocalAsset ? '/images/hero.jpg' : FALLBACK_HERO.src)
         }
       }}
     />
@@ -96,12 +126,12 @@ function HeroImage({ src }: { src: string }) {
 }
 
 export default function HomePage() {
-  const { heroUrl, galleryUrls } = useHomeAssets()
+  const { hero, gallery } = useHomeAssets()
 
   return (
     <>
       <section className="relative h-[25vh] grid place-items-center">
-        <HeroImage src={heroUrl} />
+        <HeroImage src={hero.src} alt={hero.alt} />
         <div className="absolute inset-0 bg-black/50" />
         <div className="relative z-10 text-center text-white px-6">
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
@@ -139,7 +169,7 @@ export default function HomePage() {
         ))}
       </section>
 
-      <IGGrid images={galleryUrls} />
+      <IGGrid images={gallery} />
 
       <section id="contacto" className="max-w-6xl mx-auto px-4 py-12">
         <div className="rounded-2xl bg-white shadow p-6">

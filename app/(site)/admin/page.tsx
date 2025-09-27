@@ -47,9 +47,9 @@ export default function AdminHome() {
           subtitle="Subir y administrar PDFs públicos"
         />
         <Tile
-          href="/admin/home-images"
-          title="Imágenes del home"
-          subtitle="Actualizar hero y galería"
+          href="/admin/media"
+          title="Media del sitio"
+          subtitle="Administra imágenes del home"
         />
         <Tile
           href="/admin/reports"
