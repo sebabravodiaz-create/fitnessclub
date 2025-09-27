@@ -26,7 +26,7 @@ Aplicación web construida con Next.js 14 y Supabase para la gestión integral d
 ### Panel administrativo (`/admin`)
 - **Inicio de sesión** con correo y contraseña usando Supabase Auth (`/login`), protegido para rutas administrativas.
 - **Gestión de atletas**: búsqueda global por nombre, contacto, RFID o plan; creación, edición y eliminación con manejo automático de tarjetas y membresías.
-- **Mantenedor de imágenes del home** (`/admin/home-images`): carga, vista previa y eliminación de recursos del hero y la galería en el bucket `home-assets`.
+- **Mantenedor de imágenes del home** (`/admin/home-images`): administra el hero y las 9 miniaturas `ig-1`…`ig-9` del bucket `home-assets` con vista previa y control individual.
 - **Carga de rutinas en PDF**: interfaz para subir, listar y eliminar archivos en el bucket público `routines-public` de Supabase Storage.
 - **Vista de asignaciones**: páginas auxiliares para crear y revisar información individual de atletas y sus membresías.
 
@@ -51,7 +51,7 @@ Aplicación web construida con Next.js 14 y Supabase para la gestión integral d
 1. Crea un proyecto en Supabase y obtén las llaves URL/Anon/Service.
 2. Abre **SQL Editor** y ejecuta el contenido de [`supabase_schema.sql`](./supabase_schema.sql) para crear tablas, relaciones y políticas RLS.
 3. En **Storage → Buckets** crea los buckets públicos `routines-public` (PDFs) y `home-assets` (imágenes del landing).
-4. Dentro de `home-assets` genera dos carpetas: `hero` y `gallery` para organizar los recursos.
+4. Dentro de `home-assets` genera dos carpetas: `hero` (usa el prefijo `hero-main` para el archivo activo) y `gallery` con los nueve archivos `ig-1`…`ig-9` (pueden tener la extensión que necesites, por ejemplo `ig-1.jpg`).
 5. (Opcional) Registra el dominio de producción en **Authentication → URL Configuration** para permitir el flujo de login.
 
 ## Variables de entorno
