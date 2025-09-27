@@ -1,6 +1,7 @@
 // app/api/access/validate/route.ts
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { buildAthletePhotoPublicUrl } from '@/lib/athletePhotos'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -11,6 +12,7 @@ type AthleteLite = {
   name: string | null
   email?: string | null
   phone?: string | null
+  photo_path?: string | null
 }
 
 type CardWithAthlete = {
@@ -55,7 +57,7 @@ export async function POST(req: NextRequest) {
         uid,
         active,
         athlete_id,
-        athletes:athletes ( name, email, phone )
+        athletes:athletes ( name, email, phone, photo_path )
       `)
       .eq('uid', cleanedUID)
       .eq('active', true)
@@ -64,7 +66,7 @@ export async function POST(req: NextRequest) {
 
     let result: AccessResult
     let note = ''
-    let athlete: { id?: string; name?: string | null } | null = null
+    let athlete: { id?: string; name?: string | null; photo_url?: string | null } | null = null
     let membership: { plan?: string | null; end_date?: string | null } | null = null
 
     if (!card) {
@@ -74,7 +76,8 @@ export async function POST(req: NextRequest) {
     } else {
       const athleteRel = card.athletes
       const athleteObj = Array.isArray(athleteRel) ? athleteRel[0] : athleteRel
-      athlete = { id: card.athlete_id, name: athleteObj?.name ?? null }
+      const photoUrl = buildAthletePhotoPublicUrl(athleteObj?.photo_path ?? null)
+      athlete = { id: card.athlete_id, name: athleteObj?.name ?? null, photo_url: photoUrl }
 
       // 2) Buscar membresías del atleta y evaluar vigencia
       const { data: mems, error: memErr } = await supabase

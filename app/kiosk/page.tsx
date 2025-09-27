@@ -7,6 +7,7 @@ type AccessResult = {
   membership?: string
   endDate?: string
   status: 'allowed' | 'expired' | 'unknown_card'
+  photoUrl?: string
 }
 
 function formatDate(dateStr?: string) {
@@ -26,9 +27,12 @@ export default function KioskPage() {
   const [message, setMessage] = useState<string>('Acerca la tarjeta...')
   const [lastUID, setLastUID] = useState<string>('')
   const [lastEndDate, setLastEndDate] = useState<string>('')
+  const [lastPhotoUrl, setLastPhotoUrl] = useState<string>('')
   const [history, setHistory] = useState<AccessResult[]>([])
   const bufferRef = useRef<string>('')
   const timeoutRef = useRef<any>(null)
+
+  const PLACEHOLDER_PHOTO = '/images/athlete-placeholder.svg'
 
   // 2) Efecto de montaje (no acceder a window fuera de efectos)
   useEffect(() => {
@@ -88,48 +92,58 @@ export default function KioskPage() {
       })
       const data = await res.json()
 
+      const athletePhoto: string = (data?.athlete?.photo_url as string | null) || ''
+
       if (data.ok && data.result === 'allowed') {
         setStatus('ok')
         setMessage(`✅ ACCESO PERMITIDO\n${data.athlete.name}`)
         setLastEndDate(data.membership?.end_date || '')
+        setLastPhotoUrl(athletePhoto)
         addToHistory({
           name: data.athlete.name,
           uid: data.uid,
           membership: 'Vigente',
           endDate: data.membership?.end_date,
           status: 'allowed',
+          photoUrl: athletePhoto,
         })
       } else if (data.result === 'expired') {
         setStatus('fail')
         setMessage(`⚠️ MEMBRESÍA EXPIRADA\n${data.athlete?.name || ''}`)
         setLastEndDate(data.membership?.end_date || '')
+        setLastPhotoUrl(athletePhoto)
         addToHistory({
           name: data.athlete?.name || 'Desconocido',
           uid: data.uid,
           membership: 'Expirada',
           endDate: data.membership?.end_date,
           status: 'expired',
+          photoUrl: athletePhoto,
         })
       } else {
         setStatus('fail')
         setMessage(`❌ TARJETA DESCONOCIDA\nUID: ${data.uid}`)
         setLastEndDate('')
+        setLastPhotoUrl('')
         addToHistory({
           name: 'Desconocido',
           uid: data.uid,
           membership: 'N/A',
           status: 'unknown_card',
+          photoUrl: '',
         })
       }
     } catch {
       setStatus('fail')
       setMessage(`Error de validación\nUID: ${cleanedUID}`)
+      setLastPhotoUrl('')
     } finally {
       setTimeout(() => {
         setStatus('idle')
         setMessage('Acerca la tarjeta...')
         setLastUID('')
         setLastEndDate('')
+        setLastPhotoUrl('')
       }, 3000)
     }
   }
@@ -143,6 +157,8 @@ export default function KioskPage() {
     return <div className="h-screen w-screen bg-gray-50" />
   }
 
+  const currentPhoto = lastPhotoUrl || PLACEHOLDER_PHOTO
+
   return (
     <div className="h-screen w-screen flex select-none bg-gray-50">
       {/* Panel central */}
@@ -154,6 +170,9 @@ export default function KioskPage() {
       >
         <div className="text-center px-6">
           <h1 className="text-5xl font-bold mb-6">Control de Acceso</h1>
+          <div className="w-48 h-48 mx-auto mb-6 rounded-full overflow-hidden border-4 border-white shadow-lg bg-white">
+            <img src={currentPhoto} alt="Foto del deportista" className="w-full h-full object-cover" />
+          </div>
           <p className="text-3xl font-semibold whitespace-pre-line">{message}</p>
 
           {lastUID && (
@@ -189,8 +208,19 @@ export default function KioskPage() {
                 h.status === 'allowed' ? 'bg-green-100' : 'bg-red-100',
               ].join(' ')}
             >
-              <p className="font-semibold">{h.name}</p>
-              <p className="text-sm text-gray-700">Tarjeta: {h.uid}</p>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-12 h-12 rounded-full overflow-hidden bg-white border">
+                  <img
+                    src={h.photoUrl || PLACEHOLDER_PHOTO}
+                    alt={`Foto de ${h.name}`}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div>
+                  <p className="font-semibold">{h.name}</p>
+                  <p className="text-sm text-gray-700">Tarjeta: {h.uid}</p>
+                </div>
+              </div>
               <p className="text-sm text-gray-700">Membresía: {h.membership}</p>
               {h.endDate && (
                 <p className="text-sm text-gray-500">Vence: {formatDate(h.endDate)}</p>

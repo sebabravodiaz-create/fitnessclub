@@ -5,6 +5,13 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import {
+  ATHLETE_PHOTO_BUCKET,
+  buildAthletePhotoPath,
+  buildAthletePhotoPublicUrl,
+  inferPhotoExtension,
+  resolvePhotoContentType,
+} from '@/lib/athletePhotos'
 
 type Athlete = {
   id: string
@@ -13,6 +20,7 @@ type Athlete = {
   phone: string | null
   rut: string | null
   created_at: string
+  photo_path: string | null
 }
 
 type Plan = 'Mensual' | 'Anual'
@@ -39,6 +47,11 @@ export default function AthleteEditPage() {
   const router = useRouter()
 
   const [ath, setAth] = useState<Athlete | null>(null)
+
+  const [photoPath, setPhotoPath] = useState<string | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [removePhoto, setRemovePhoto] = useState(false)
 
   // RFID (mostrar activo; al guardar: desactivar previos + crear uno nuevo)
   const [rfid, setRfid] = useState<string>('')
@@ -77,11 +90,16 @@ export default function AthleteEditPage() {
     // 1) Atleta
     const { data: a, error: aErr } = await supabase
       .from('athletes')
-      .select('id, name, email, phone, rut, created_at')
+      .select('id, name, email, phone, rut, created_at, photo_path')
       .eq('id', id)
       .maybeSingle()
     if (aErr) { setMsg(aErr.message); setLoading(false); return }
-    setAth(a as Athlete)
+    const athleteData = a as Athlete
+    setAth(athleteData)
+    setPhotoPath(athleteData?.photo_path ?? null)
+    setPhotoFile(null)
+    setRemovePhoto(false)
+    setPhotoPreview(buildAthletePhotoPublicUrl(athleteData?.photo_path ?? null))
 
     // 2) Tarjeta activa
     const { data: card } = await supabase
@@ -131,6 +149,52 @@ export default function AthleteEditPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
+  useEffect(() => {
+    return () => {
+      if (photoPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(photoPreview)
+      }
+    }
+  }, [photoPreview])
+
+  const handlePhotoFileChange = (file: File | null) => {
+    if (photoPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(photoPreview)
+    }
+
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('La foto no puede superar los 5 MB.')
+        return
+      }
+      setPhotoFile(file)
+      setPhotoPreview(URL.createObjectURL(file))
+      setRemovePhoto(false)
+    } else {
+      setPhotoFile(null)
+      setPhotoPreview(buildAthletePhotoPublicUrl(photoPath))
+      setRemovePhoto(false)
+    }
+  }
+
+  const handleCancelNewPhoto = () => {
+    if (photoPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(photoPreview)
+    }
+    setPhotoFile(null)
+    setPhotoPreview(buildAthletePhotoPublicUrl(photoPath))
+    setRemovePhoto(false)
+  }
+
+  const handleRemoveCurrentPhoto = () => {
+    if (photoPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(photoPreview)
+    }
+    setPhotoFile(null)
+    setPhotoPreview(null)
+    setRemovePhoto(true)
+  }
+
   // Recalcular fin al cambiar plan o start (para la NUEVA membresía)
   useEffect(() => {
     if (!memStart) return
@@ -145,19 +209,81 @@ export default function AthleteEditPage() {
     if (!ath) return
     setBusy(true); setMsg(null)
 
-    const { error } = await supabase
-      .from('athletes')
-      .update({
-        name: ath.name?.trim() || null,
-        email: ath.email?.trim() || null,
-        phone: ath.phone?.trim() || null,
-        rut: ath.rut?.trim() || null,
-      })
-      .eq('id', ath.id)
+    try {
+      const { error } = await supabase
+        .from('athletes')
+        .update({
+          name: ath.name?.trim() || null,
+          email: ath.email?.trim() || null,
+          phone: ath.phone?.trim() || null,
+          rut: ath.rut?.trim() || null,
+        })
+        .eq('id', ath.id)
 
-    if (error) setMsg(error.message)
-    else setMsg('Datos guardados.')
-    setBusy(false)
+      if (error) throw error
+
+      let nextPhotoPath = photoPath
+
+      if (photoFile) {
+        const extension = inferPhotoExtension(photoFile)
+        const newPath = buildAthletePhotoPath(ath.id, extension)
+        const { error: uploadErr } = await supabase.storage
+          .from(ATHLETE_PHOTO_BUCKET)
+          .upload(newPath, photoFile, {
+            upsert: true,
+            contentType: resolvePhotoContentType(photoFile, extension),
+          })
+        if (uploadErr) throw uploadErr
+
+        const { error: updatePhotoErr } = await supabase
+          .from('athletes')
+          .update({ photo_path: newPath })
+          .eq('id', ath.id)
+        if (updatePhotoErr) throw updatePhotoErr
+
+        if (photoPath && photoPath !== newPath) {
+          const { error: removeErr } = await supabase.storage
+            .from(ATHLETE_PHOTO_BUCKET)
+            .remove([photoPath])
+          if (removeErr) {
+            console.warn('No se pudo eliminar la foto anterior:', removeErr)
+          }
+        }
+
+        if (photoPreview?.startsWith('blob:')) {
+          URL.revokeObjectURL(photoPreview)
+        }
+
+        nextPhotoPath = newPath
+        setPhotoFile(null)
+        setPhotoPreview(buildAthletePhotoPublicUrl(newPath))
+        setRemovePhoto(false)
+      } else if (removePhoto && photoPath) {
+        const { error: updatePhotoErr } = await supabase
+          .from('athletes')
+          .update({ photo_path: null })
+          .eq('id', ath.id)
+        if (updatePhotoErr) throw updatePhotoErr
+
+        const { error: removeErr } = await supabase.storage
+          .from(ATHLETE_PHOTO_BUCKET)
+          .remove([photoPath])
+        if (removeErr) {
+          console.warn('No se pudo eliminar la foto anterior:', removeErr)
+        }
+        nextPhotoPath = null
+        setPhotoPreview(null)
+        setRemovePhoto(false)
+      }
+
+      setPhotoPath(nextPhotoPath)
+      setAth({ ...ath, photo_path: nextPhotoPath })
+      setMsg('Datos guardados.')
+    } catch (err: any) {
+      setMsg(err?.message || 'Error al guardar datos del atleta.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   // ---- Guardar/Asignar RFID con HISTÓRICO ----
@@ -308,6 +434,49 @@ export default function AthleteEditPage() {
               onChange={(e)=>setAth({...ath, phone: e.target.value})}
             />
           </label>
+        </div>
+        <div className="space-y-2">
+          <span className="text-sm font-medium">Foto del deportista (opcional)</span>
+          <div className="flex flex-wrap gap-4 items-start">
+            <div className="w-32 h-32 rounded-full overflow-hidden border bg-gray-100 flex items-center justify-center text-xs text-gray-500">
+              {photoPreview ? (
+                <img src={photoPreview} alt="Foto del atleta" className="w-full h-full object-cover" />
+              ) : (
+                <span>Sin foto</span>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(event) => handlePhotoFileChange(event.target.files?.[0] ?? null)}
+              />
+              {photoFile && (
+                <button
+                  type="button"
+                  className="text-sm underline self-start"
+                  onClick={handleCancelNewPhoto}
+                >
+                  Cancelar foto nueva
+                </button>
+              )}
+              {!photoFile && photoPath && !removePhoto && (
+                <button
+                  type="button"
+                  className="text-sm underline self-start"
+                  onClick={handleRemoveCurrentPhoto}
+                >
+                  Quitar foto actual
+                </button>
+              )}
+              {removePhoto && (
+                <p className="text-xs text-red-600">Se eliminará la foto actual al guardar.</p>
+              )}
+              <p className="text-xs text-gray-500 max-w-xs">
+                Se admite PNG, JPG, GIF o WebP de hasta 5&nbsp;MB.
+              </p>
+            </div>
+          </div>
         </div>
         <button disabled={busy} className="px-4 py-2 rounded-xl border shadow bg-white disabled:opacity-60">
           {busy ? 'Guardando…' : 'Guardar datos'}

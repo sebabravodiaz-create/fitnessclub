@@ -10,8 +10,15 @@ create table if not exists public.athletes (
   birthdate date,
   email text,
   phone text,
+  photo_path text,
   created_at timestamptz default now()
 );
+
+-- Bucket público para las fotos de deportistas
+insert into storage.buckets (id, name, public)
+values ('athlete-photos', 'athlete-photos', true)
+on conflict (id) do nothing;
+
 
 create table if not exists public.cards (
   id uuid primary key default gen_random_uuid(),

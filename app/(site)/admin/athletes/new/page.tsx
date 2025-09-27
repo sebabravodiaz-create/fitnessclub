@@ -3,9 +3,15 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
+import {
+  ATHLETE_PHOTO_BUCKET,
+  buildAthletePhotoPath,
+  inferPhotoExtension,
+  resolvePhotoContentType,
+} from '@/lib/athletePhotos'
 
 type Plan = 'Mensual' | 'Anual'
 
@@ -24,12 +30,43 @@ export default function AthleteNewPage() {
   const [phone, setPhone] = useState('')
   const [rfid, setRfid] = useState('')
 
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+
   const [plan, setPlan] = useState<Plan>('Mensual')
   const [start, setStart] = useState<string>(toISO(new Date()))
   const [end, setEnd] = useState<string>(toISO(addMonths(new Date(), 1)))
 
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (photoPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(photoPreview)
+      }
+    }
+  }, [photoPreview])
+
+  const onPhotoChange = (file: File | null) => {
+    if (photoPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(photoPreview)
+    }
+
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('La foto no puede superar los 5 MB.')
+        setPhotoFile(null)
+        setPhotoPreview(null)
+        return
+      }
+      setPhotoFile(file)
+      setPhotoPreview(URL.createObjectURL(file))
+    } else {
+      setPhotoFile(null)
+      setPhotoPreview(null)
+    }
+  }
 
   const onChangeStart = (v: string) => {
     setStart(v)
@@ -67,6 +104,34 @@ export default function AthleteNewPage() {
         .single()
       if (aErr) throw aErr
       const athleteId = created!.id as string
+
+      // 1b) Subir foto si corresponde (opcional, errores no bloquean el flujo)
+      if (photoFile) {
+        try {
+          const extension = inferPhotoExtension(photoFile)
+          const path = buildAthletePhotoPath(athleteId, extension)
+          const { error: uploadErr } = await supabase.storage
+            .from(ATHLETE_PHOTO_BUCKET)
+            .upload(path, photoFile, {
+              upsert: true,
+              contentType: resolvePhotoContentType(photoFile, extension),
+            })
+          if (uploadErr) throw uploadErr
+
+          const { error: updatePhotoErr } = await supabase
+            .from('athletes')
+            .update({ photo_path: path })
+            .eq('id', athleteId)
+          if (updatePhotoErr) throw updatePhotoErr
+
+          if (photoPreview?.startsWith('blob:')) {
+            URL.revokeObjectURL(photoPreview)
+          }
+        } catch (photoError: any) {
+          console.error('Error subiendo foto del atleta:', photoError)
+          alert('El atleta se creó, pero la foto no pudo cargarse. Puedes intentarlo luego desde la edición.')
+        }
+      }
 
       // 2) Tarjeta activa
       const { error: cErr } = await supabase
@@ -120,6 +185,38 @@ export default function AthleteNewPage() {
           </label>
         </div>
 
+        <div className="space-y-2">
+          <span className="text-sm font-medium">Foto del deportista (opcional)</span>
+          <div className="flex flex-wrap gap-4 items-start">
+            <div className="w-32 h-32 rounded-full overflow-hidden border bg-gray-100 flex items-center justify-center text-xs text-gray-500">
+              {photoPreview ? (
+                <img src={photoPreview} alt="Vista previa" className="w-full h-full object-cover" />
+              ) : (
+                <span>Sin foto</span>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(event) => onPhotoChange(event.target.files?.[0] ?? null)}
+              />
+              {photoPreview && (
+                <button
+                  type="button"
+                  onClick={() => onPhotoChange(null)}
+                  className="text-sm underline self-start"
+                >
+                  Quitar foto seleccionada
+                </button>
+              )}
+              <p className="text-xs text-gray-500 max-w-xs">
+                Se admite PNG, JPG, GIF o WebP de hasta 5&nbsp;MB. Puedes agregarla o cambiarla más tarde desde la edición.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="grid sm:grid-cols-3 gap-3">
           <label className="text-sm">
             Plan
@@ -139,10 +236,10 @@ export default function AthleteNewPage() {
         </div>
 
         <button disabled={busy} className="px-4 py-2 rounded-xl border shadow bg-white disabled:opacity-60">
-          {busy ? 'Creando…' : 'Crear atleta'}
-        </button>
-        {msg && <p className="text-sm mt-2">{msg}</p>}
-      </form>
-    </main>
+        {busy ? 'Creando…' : 'Crear atleta'}
+      </button>
+      {msg && <p className="text-sm mt-2">{msg}</p>}
+    </form>
+  </main>
   )
 }

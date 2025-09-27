@@ -1,0 +1,12 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Imagen genérica de deportista">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e5e7eb" />
+      <stop offset="100%" stop-color="#d1d5db" />
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="128" fill="url(#bg)" />
+  <circle cx="128" cy="100" r="60" fill="#cbd5f5" />
+  <path d="M64 224c0-40 32-72 72-72s72 32 72 72" fill="#a5b4fc" />
+  <path d="M128 36c-28 0-52 24-52 52 0 6 1 12 3 18 8 4 24 10 49 10s41-6 49-10a52 52 0 0 0 3-18c0-28-24-52-52-52z" fill="#818cf8" opacity="0.4" />
+</svg>
