@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabaseClient'
 
 const FALLBACK_HERO = '/images/hero.png'
 const FALLBACK_GALLERY = Array.from({ length: 9 }).map((_, index) => `/images/ig-${index + 1}.png`)
+const GALLERY_FOLDERS = Array.from({ length: 9 }).map((_, index) => `gallery/ig-${index + 1}`)
 
 function useHomeAssets() {
   const [heroUrl, setHeroUrl] = useState(FALLBACK_HERO)
@@ -30,17 +31,27 @@ function useHomeAssets() {
           if (data?.publicUrl) setHeroUrl(data.publicUrl)
         }
 
-        const { data: galleryFiles, error: galleryError } = await bucket.list('gallery', {
-          limit: 50,
-          sortBy: { column: 'name', order: 'asc' },
-        })
-        if (galleryError) throw galleryError
-        if (!cancelled && galleryFiles && galleryFiles.length) {
-          const urls = galleryFiles
-            .filter((file) => !!file.name)
-            .map((file) => bucket.getPublicUrl(`gallery/${file.name}`).data.publicUrl)
-            .filter((url): url is string => Boolean(url))
-          if (urls.length) setGalleryUrls(urls)
+        const galleryResults = await Promise.all(
+          GALLERY_FOLDERS.map(async (folder, index) => {
+            try {
+              const { data: files, error } = await bucket.list(folder, {
+                limit: 1,
+                sortBy: { column: 'created_at', order: 'desc' },
+              })
+              if (error) throw error
+              const file = files?.[0]
+              if (!file || !file.name) return FALLBACK_GALLERY[index]
+              const { data } = bucket.getPublicUrl(`${folder}/${file.name}`)
+              return data.publicUrl ?? FALLBACK_GALLERY[index]
+            } catch (error) {
+              console.warn(`No se pudo cargar ${folder}`, error)
+              return FALLBACK_GALLERY[index]
+            }
+          })
+        )
+
+        if (!cancelled) {
+          setGalleryUrls(galleryResults)
         }
       } catch (error) {
         console.warn('No se pudieron cargar las imágenes del home', error)

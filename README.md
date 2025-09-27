@@ -50,7 +50,9 @@ Aplicación web construida con Next.js 14 y Supabase para la gestión integral d
 1. Crea un proyecto en Supabase y obtén las llaves URL/Anon/Service.
 2. Abre **SQL Editor** y ejecuta el contenido de [`supabase_schema.sql`](./supabase_schema.sql) para crear tablas, relaciones y políticas RLS.
 3. En **Storage → Buckets** crea un bucket llamado `routines-public` con visibilidad **public**.
-4. Crea otro bucket público llamado `home-assets` donde se almacenarán el hero y las imágenes de la galería del home.
+4. Crea otro bucket público llamado `home-assets` donde se almacenarán el hero y las imágenes de la galería del home. Dentro de
+   este bucket se generan carpetas `hero/` y `gallery/ig-1` … `gallery/ig-9`, cada una con un único archivo activo que puedes
+   administrar desde `/admin/home-images`.
 5. (Opcional) Registra el dominio de producción en **Authentication → URL Configuration** para permitir el flujo de login.
 
 ## Variables de entorno

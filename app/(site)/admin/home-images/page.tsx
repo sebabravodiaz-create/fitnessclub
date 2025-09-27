@@ -2,67 +2,86 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+
 import { supabase } from '@/lib/supabaseClient'
 
 const BUCKET = 'home-assets'
 
-type StoredFile = {
+type ManagedImage = {
   name: string
   url: string
   created_at?: string | null
   path: string
-}
+} | null
 
 type UploadStatus = string
 
+const SECTIONS = [
+  {
+    id: 'hero',
+    title: 'Hero principal',
+    description: 'Imagen principal del home (fondo del hero).',
+    folder: 'hero',
+    fallback: '/images/hero.png',
+  },
+  ...Array.from({ length: 9 }).map((_, index) => {
+    const displayIndex = index + 1
+    return {
+      id: `ig-${displayIndex}`,
+      title: `Imagen IG ${displayIndex}`,
+      description: 'Se muestra en la cuadrícula de Instagram del home.',
+      folder: `gallery/ig-${displayIndex}`,
+      fallback: `/images/ig-${displayIndex}.png`,
+    }
+  }),
+]
+
 function useHomeStorage() {
-  const [heroImages, setHeroImages] = useState<StoredFile[]>([])
-  const [galleryImages, setGalleryImages] = useState<StoredFile[]>([])
+  const [images, setImages] = useState<Record<string, ManagedImage>>({})
   const [status, setStatus] = useState<UploadStatus>('')
+  const [loading, setLoading] = useState(false)
 
   const refresh = async () => {
+    setLoading(true)
     setStatus('Cargando archivos…')
     try {
       const bucket = supabase.storage.from(BUCKET)
 
-      const { data: heroFiles, error: heroError } = await bucket.list('hero', {
-        limit: 100,
-        sortBy: { column: 'created_at', order: 'desc' },
-      })
-      if (heroError) throw heroError
-      setHeroImages(
-        (heroFiles ?? [])
-          .filter((file) => Boolean(file.name))
-          .map((file) => ({
-            name: file.name,
-            created_at: file.created_at,
-            path: `hero/${file.name}`,
-            url: bucket.getPublicUrl(`hero/${file.name}`).data.publicUrl,
-          }))
+      const results = await Promise.all(
+        SECTIONS.map(async (section) => {
+          try {
+            const { data, error } = await bucket.list(section.folder, {
+              limit: 1,
+              sortBy: { column: 'created_at', order: 'desc' },
+            })
+            if (error) throw error
+            const file = data?.[0]
+            if (!file || !file.name) return [section.id, null] as const
+            const { data: urlData } = bucket.getPublicUrl(`${section.folder}/${file.name}`)
+            return [
+              section.id,
+              {
+                name: file.name,
+                created_at: file.created_at,
+                path: `${section.folder}/${file.name}`,
+                url: urlData.publicUrl,
+              } satisfies NonNullable<ManagedImage>,
+            ] as const
+          } catch (error) {
+            console.error(`No se pudo cargar ${section.id}`, error)
+            return [section.id, null] as const
+          }
+        })
       )
 
-      const { data: galleryFiles, error: galleryError } = await bucket.list('gallery', {
-        limit: 200,
-        sortBy: { column: 'name', order: 'asc' },
-      })
-      if (galleryError) throw galleryError
-      setGalleryImages(
-        (galleryFiles ?? [])
-          .filter((file) => Boolean(file.name))
-          .map((file) => ({
-            name: file.name,
-            created_at: file.created_at,
-            path: `gallery/${file.name}`,
-            url: bucket.getPublicUrl(`gallery/${file.name}`).data.publicUrl,
-          }))
-      )
-
+      setImages(Object.fromEntries(results))
       setStatus('Listo ✔️')
     } catch (error: any) {
       console.error(error)
       setStatus(error.message || 'No se pudieron cargar los archivos')
-      setHeroImages([])
-      setGalleryImages([])
+      setImages({})
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -71,11 +90,11 @@ function useHomeStorage() {
   }, [])
 
   return {
-    heroImages,
-    galleryImages,
+    images,
     refresh,
     status,
     setStatus,
+    loading,
   }
 }
 
@@ -88,17 +107,19 @@ function formatDate(date?: string | null) {
 
 export default function HomeImagesAdminPage() {
   const router = useRouter()
-  const heroInputRef = useRef<HTMLInputElement>(null)
-  const galleryInputRef = useRef<HTMLInputElement>(null)
-  const { heroImages, galleryImages, refresh, status, setStatus } = useHomeStorage()
-  const activeHero = heroImages[0]
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const [uploadingSection, setUploadingSection] = useState<string | null>(null)
+  const { images, refresh, status, setStatus, loading } = useHomeStorage()
 
-  const uploading = useMemo(() => status.startsWith('Subiendo'), [status])
+  const uploading = useMemo(() => Boolean(uploadingSection), [uploadingSection])
 
-  const uploadHero = async () => {
-    const file = heroInputRef.current?.files?.[0]
+  const uploadImage = async (sectionId: string) => {
+    const section = SECTIONS.find((item) => item.id === sectionId)
+    if (!section) return
+
+    const file = inputRefs.current[sectionId]?.files?.[0]
     if (!file) {
-      setStatus('Selecciona una imagen para el hero')
+      setStatus('Selecciona una imagen para subir')
       return
     }
 
@@ -107,172 +128,159 @@ export default function HomeImagesAdminPage() {
       return
     }
 
+    const bucket = supabase.storage.from(BUCKET)
     const ext = file.name.split('.').pop() || 'jpg'
-    const path = `hero/hero-${Date.now()}.${ext}`
+    const filename = `actual.${ext}`
+    const path = `${section.folder}/${filename}`
 
-    setStatus('Subiendo imagen de hero…')
-    const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-      cacheControl: '3600',
-      upsert: false,
-      contentType: file.type,
-    })
+    setUploadingSection(sectionId)
+    setStatus(`Subiendo ${section.title}…`)
 
-    if (error) {
-      setStatus(`Error: ${error.message}`)
-      return
-    }
-
-    if (heroInputRef.current) heroInputRef.current.value = ''
-    setStatus('Imagen subida ✔️')
-    refresh()
-  }
-
-  const uploadGallery = async () => {
-    const files = galleryInputRef.current?.files
-    if (!files || files.length === 0) {
-      setStatus('Selecciona al menos una imagen para la galería')
-      return
-    }
-
-    setStatus('Subiendo imágenes de la galería…')
     try {
-      const uploads = Array.from(files).map(async (file) => {
-        if (!file.type.startsWith('image/')) {
-          throw new Error(`"${file.name}" no es una imagen válida`)
-        }
-        const normalizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
-        const path = `gallery/${Date.now()}-${normalizedName}`
-        const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: file.type,
-        })
+      let toRemove: string[] = []
+      try {
+        const { data: existingFiles } = await bucket.list(section.folder)
+        toRemove = existingFiles?.map((fileEntry) => `${section.folder}/${fileEntry.name}`) ?? []
+      } catch (error) {
+        console.warn(`No se pudo listar ${section.folder} antes de subir`, error)
+      }
+
+      if (toRemove.length) {
+        const { error } = await bucket.remove(toRemove)
         if (error) throw error
+      }
+
+      const { error } = await bucket.upload(path, file, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: file.type,
       })
 
-      await Promise.all(uploads)
-      if (galleryInputRef.current) galleryInputRef.current.value = ''
-      setStatus('Galería actualizada ✔️')
-      refresh()
+      if (error) throw error
+
+      if (inputRefs.current[sectionId]) {
+        inputRefs.current[sectionId]!.value = ''
+      }
+
+      setStatus(`${section.title} actualizada ✔️`)
+      await refresh()
     } catch (error: any) {
-      setStatus(error.message || 'Ocurrió un error al subir la galería')
+      console.error(error)
+      setStatus(error.message || `No se pudo subir ${section.title}`)
+    } finally {
+      setUploadingSection(null)
     }
   }
 
-  const removeFile = async (path: string) => {
-    setStatus(`Eliminando ${path}…`)
-    const { error } = await supabase.storage.from(BUCKET).remove([path])
-    if (error) {
-      setStatus(`Error: ${error.message}`)
-      return
+  const removeImage = async (sectionId: string) => {
+    const section = SECTIONS.find((item) => item.id === sectionId)
+    const image = section ? images[section.id] : null
+    if (!section || !image) return
+
+    setUploadingSection(sectionId)
+    setStatus(`Eliminando ${section.title}…`)
+
+    try {
+      const { error } = await supabase.storage.from(BUCKET).remove([image.path])
+      if (error) throw error
+      setStatus(`${section.title} eliminada ✔️`)
+      await refresh()
+    } catch (error: any) {
+      console.error(error)
+      setStatus(error.message || `No se pudo eliminar ${section.title}`)
+    } finally {
+      setUploadingSection(null)
     }
-    setStatus('Archivo eliminado ✔️')
-    refresh()
   }
 
   return (
-    <main className="max-w-5xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between gap-4 mb-6">
+    <main className="mx-auto max-w-5xl px-4 py-8">
+      <div className="mb-6 flex items-center justify-between gap-4">
         <button onClick={() => router.back()} className="text-sm underline">
           ← Volver
         </button>
-        <h1 className="text-2xl font-bold flex-1 text-center">Imágenes del home</h1>
+        <h1 className="flex-1 text-center text-2xl font-bold">Imágenes del home</h1>
         <div className="w-[120px]" />
       </div>
 
       <p className="mb-6 text-sm text-gray-600">
-        Las imágenes se almacenan en el bucket público "{BUCKET}" de Supabase. La última imagen subida al hero se mostrará en la landing.
+        Sube y actualiza las imágenes que se muestran en la landing. Cada sección corresponde a
+        un espacio específico del sitio.
       </p>
 
-      <section className="mb-10 rounded-2xl bg-white p-6 shadow">
-        <h2 className="text-xl font-semibold mb-4">Hero principal</h2>
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <div>
-            <label className="block text-sm font-medium mb-2">Seleccionar imagen</label>
-            <input ref={heroInputRef} type="file" accept="image/*" className="w-full rounded border px-3 py-2" />
-            <button
-              onClick={uploadHero}
-              className="mt-3 inline-flex items-center gap-2 rounded bg-black px-4 py-2 text-white disabled:opacity-50"
-              disabled={uploading}
-            >
-              Subir hero
-            </button>
-            {activeHero && (
-              <p className="mt-4 text-sm text-gray-600">
-                Actualmente se usa: <span className="font-medium">{activeHero.name}</span>
-              </p>
-            )}
-          </div>
-          {activeHero && (
-            <div className="flex flex-col items-center gap-2">
-              <div className="relative h-40 w-64 overflow-hidden rounded-lg border">
-                <img src={activeHero.url} alt={activeHero.name} className="h-full w-full object-cover" />
-              </div>
-              <p className="text-xs text-gray-500">Subido: {formatDate(activeHero.created_at)}</p>
-              <button
-                onClick={() => removeFile(activeHero.path)}
-                className="text-sm text-red-600 underline"
-              >
-                Eliminar hero activo
-              </button>
-            </div>
-          )}
-        </div>
-
-        {heroImages.length > 1 && (
-          <div className="mt-6">
-            <h3 className="text-sm font-semibold mb-2">Historial</h3>
-            <ul className="space-y-2 text-sm">
-              {heroImages.slice(1).map((file) => (
-                <li key={file.path} className="flex items-center justify-between gap-4 rounded border px-3 py-2">
-                  <span className="truncate">{file.name}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-500">{formatDate(file.created_at)}</span>
-                    <button onClick={() => removeFile(file.path)} className="text-red-600 underline">
+      <div className="grid gap-6">
+        {SECTIONS.map((section) => {
+          const image = images[section.id]
+          return (
+            <section key={section.id} className="rounded-2xl bg-white p-6 shadow">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-[240px] flex-1">
+                  <h2 className="text-xl font-semibold">{section.title}</h2>
+                  <p className="mt-1 text-sm text-gray-600">{section.description}</p>
+                  <label className="mt-4 block text-sm font-medium">Seleccionar imagen</label>
+                  <input
+                    ref={(element) => {
+                      inputRefs.current[section.id] = element
+                    }}
+                    type="file"
+                    accept="image/*"
+                    className="mt-1 w-full rounded border px-3 py-2"
+                    disabled={uploading}
+                  />
+                  <button
+                    onClick={() => uploadImage(section.id)}
+                    className="mt-3 inline-flex items-center gap-2 rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+                    disabled={uploading}
+                  >
+                    Guardar {section.id === 'hero' ? 'hero' : 'imagen'}
+                  </button>
+                  {image && (
+                    <button
+                      onClick={() => removeImage(section.id)}
+                      className="ml-4 inline-flex items-center text-sm text-red-600 underline disabled:opacity-50"
+                      disabled={uploading}
+                    >
                       Eliminar
                     </button>
+                  )}
+                  <p className="mt-2 text-xs text-gray-500">
+                    La imagen reemplaza al archivo del bucket en <code>{section.folder}</code>.
+                  </p>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <div className="relative h-40 w-40 overflow-hidden rounded-lg border bg-gray-50">
+                    <img
+                      src={image?.url ?? section.fallback}
+                      alt={section.title}
+                      className="h-full w-full object-cover"
+                    />
                   </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-
-      <section className="rounded-2xl bg-white p-6 shadow">
-        <h2 className="text-xl font-semibold mb-4">Galería</h2>
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <div>
-            <label className="block text-sm font-medium mb-2">Seleccionar imágenes</label>
-            <input ref={galleryInputRef} type="file" accept="image/*" multiple className="w-full rounded border px-3 py-2" />
-            <button
-              onClick={uploadGallery}
-              className="mt-3 inline-flex items-center gap-2 rounded bg-black px-4 py-2 text-white disabled:opacity-50"
-              disabled={uploading}
-            >
-              Subir galería
-            </button>
-          </div>
-          <div className="grid max-h-64 grid-cols-3 gap-2 overflow-auto">
-            {galleryImages.map((file) => (
-              <div key={file.path} className="relative aspect-square overflow-hidden rounded border">
-                <img src={file.url} alt={file.name} className="h-full w-full object-cover" />
-                <button
-                  onClick={() => removeFile(file.path)}
-                  className="absolute right-1 top-1 rounded bg-white/80 px-2 py-1 text-xs text-red-600 shadow"
-                >
-                  Eliminar
-                </button>
+                  <p className="text-xs text-gray-500">
+                    {image ? `Actualizado: ${formatDate(image.created_at)}` : 'Usando imagen por defecto'}
+                  </p>
+                  {image && (
+                    <a
+                      href={image.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs underline"
+                    >
+                      Ver en nueva pestaña
+                    </a>
+                  )}
+                </div>
               </div>
-            ))}
-            {!galleryImages.length && (
-              <p className="col-span-3 text-sm text-gray-500">No hay imágenes en la galería.</p>
-            )}
-          </div>
-        </div>
-      </section>
+            </section>
+          )
+        })}
+      </div>
 
-      {!!status && <p className="mt-6 text-sm text-gray-600">{status}</p>}
+      {!!status && (
+        <p className="mt-6 text-sm text-gray-600">
+          {status}
+          {loading ? '…' : ''}
+        </p>
+      )}
     </main>
   )
 }
