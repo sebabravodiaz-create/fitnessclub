@@ -50,18 +50,40 @@ export async function POST(req: NextRequest) {
     const today = todayUTCDateOnly()
 
     // 1) Buscar tarjeta activa
-    const { data: card, error: cardErr } = await supabase
-      .from('cards')
-      .select(`
+    let missingPhotoColumn = false
+    const cardSelectWithPhoto = `
         id,
         uid,
         active,
         athlete_id,
         athletes:athletes ( name, email, phone, photo_path )
-      `)
+      `
+
+    let { data: card, error: cardErr } = await supabase
+      .from('cards')
+      .select(cardSelectWithPhoto)
       .eq('uid', cleanedUID)
       .eq('active', true)
       .maybeSingle<CardWithAthlete>()
+
+    if (cardErr && cardErr.message?.includes('photo_path')) {
+      missingPhotoColumn = true
+      const fallback = await supabase
+        .from('cards')
+        .select(`
+          id,
+          uid,
+          active,
+          athlete_id,
+          athletes:athletes ( name, email, phone )
+        `)
+        .eq('uid', cleanedUID)
+        .eq('active', true)
+        .maybeSingle<CardWithAthlete>()
+      card = fallback.data
+      cardErr = fallback.error
+    }
+
     if (cardErr) throw cardErr
 
     let result: AccessResult
@@ -76,7 +98,9 @@ export async function POST(req: NextRequest) {
     } else {
       const athleteRel = card.athletes
       const athleteObj = Array.isArray(athleteRel) ? athleteRel[0] : athleteRel
-      const photoPath = (athleteObj as AthleteLite | undefined)?.photo_path ?? null
+      const photoPath = missingPhotoColumn
+        ? null
+        : (athleteObj as AthleteLite | undefined)?.photo_path ?? null
       const photoUrl = photoPath
         ? supabase.storage.from(ATHLETE_PHOTOS_BUCKET).getPublicUrl(photoPath).data?.publicUrl ?? null
         : null

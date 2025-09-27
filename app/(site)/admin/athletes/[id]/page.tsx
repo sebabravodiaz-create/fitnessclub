@@ -94,8 +94,29 @@ export default function AthleteEditPage() {
       .select('id, name, email, phone, rut, photo_path, created_at')
       .eq('id', id)
       .maybeSingle()
-    if (aErr) { setMsg(aErr.message); setLoading(false); return }
-    const athleteRecord = a as Athlete
+
+    let athleteRecord: Athlete | null = null
+
+    if (aErr) {
+      if (aErr.message?.includes('photo_path')) {
+        const fallback = await supabase
+          .from('athletes')
+          .select('id, name, email, phone, rut, created_at')
+          .eq('id', id)
+          .maybeSingle()
+        if (fallback.error) { setMsg(fallback.error.message); setLoading(false); return }
+        const baseAth = fallback.data as Omit<Athlete, 'photo_path'> | null
+        if (!baseAth) { setMsg('Atleta no encontrado'); setLoading(false); return }
+        athleteRecord = { ...baseAth, photo_path: null }
+      } else {
+        setMsg(aErr.message)
+        setLoading(false)
+        return
+      }
+    } else {
+      athleteRecord = (a as Athlete) ?? null
+    }
+
     setAth(athleteRecord)
     const path = athleteRecord?.photo_path ?? null
     setPhotoPath(path)
