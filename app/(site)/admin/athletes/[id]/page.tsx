@@ -56,6 +56,7 @@ export default function AthleteEditPage() {
 
   // RFID (mostrar activo; al guardar: desactivar previos + crear uno nuevo)
   const [rfid, setRfid] = useState<string>('')
+  const [currentCardUid, setCurrentCardUid] = useState<string>('')
 
   // Membresía NUEVA (histórico)
   const [memPlan, setMemPlan] = useState<Plan>('Mensual')
@@ -65,6 +66,7 @@ export default function AthleteEditPage() {
   // Vigente actual (solo lectura)
   const [currentStart, setCurrentStart] = useState<string>('')
   const [currentEnd, setCurrentEnd] = useState<string>('')
+  const [currentPlan, setCurrentPlan] = useState<Plan | null>(null)
 
   // Historial de accesos
   const [access, setAccess] = useState<AccessLog[]>([])
@@ -136,7 +138,9 @@ export default function AthleteEditPage() {
       .eq('active', true)
       .limit(1)
       .maybeSingle()
-    setRfid((card as any)?.uid ?? '')
+    const activeUid = (card as any)?.uid ?? ''
+    setRfid(activeUid)
+    setCurrentCardUid(activeUid)
 
     // 3) Membresía vigente (para mostrar actual) + defaults para nueva
     const today = fmtDate(new Date())
@@ -150,7 +154,9 @@ export default function AthleteEditPage() {
       .limit(1)
       .maybeSingle()
 
-    const planFromMem = ((mem as any)?.plan as Plan) ?? 'Mensual'
+    const detectedPlan = ((mem as any)?.plan as Plan) ?? null
+    const planFromMem: Plan = detectedPlan ?? 'Mensual'
+    setCurrentPlan(detectedPlan)
     setCurrentStart((mem as any)?.start_date ?? '')
     setCurrentEnd((mem as any)?.end_date ?? '')
     setMemPlan(planFromMem)
@@ -286,6 +292,8 @@ export default function AthleteEditPage() {
     if (insErr) { setMsg(insErr.message); setBusy(false); return }
 
     setMsg('Nueva tarjeta asignada (histórico preservado).')
+    setCurrentCardUid(uid)
+    setRfid(uid)
     setBusy(false)
   }
 
@@ -319,6 +327,7 @@ export default function AthleteEditPage() {
     setMsg('Nueva membresía creada (histórico preservado).')
     setCurrentStart(memStart)
     setCurrentEnd(memEnd)
+    setCurrentPlan(memPlan)
     setBusy(false)
   }
 
@@ -479,39 +488,76 @@ export default function AthleteEditPage() {
       </form>
 
       {/* Tarjeta RFID (histórico) */}
-      <div className="border rounded-xl p-4 bg-white space-y-3">
-        <h2 className="font-semibold">Tarjeta RFID</h2>
-        <div className="flex gap-3 items-center">
-          <input
-            className="border p-2 rounded-lg"
-            placeholder="UID de la tarjeta"
-            value={rfid}
-            onChange={(e)=>setRfid(e.target.value)}
-          />
-          <button disabled={busy} onClick={saveRFID} className="px-4 py-2 rounded-xl border shadow bg-white disabled:opacity-60">
-            {busy ? 'Guardando…' : 'Asignar como nueva'}
+      <div className="border rounded-xl p-4 bg-white space-y-4">
+        <div className="space-y-1">
+          <h2 className="font-semibold">Tarjeta RFID</h2>
+          <p className="text-sm text-gray-600">
+            Ingresa el UID leído por el lector y guarda para reemplazar la tarjeta activa del atleta.
+          </p>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="flex-1 text-sm">
+            UID de la tarjeta
+            <input
+              className="mt-1 w-full rounded-lg border p-2 font-mono"
+              placeholder="Ej: 04A1B2C3"
+              value={rfid}
+              onChange={(e)=>setRfid(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={saveRFID}
+            className="rounded-xl border bg-white px-4 py-2 font-medium shadow disabled:opacity-60"
+          >
+            {busy ? 'Guardando…' : 'Guardar tarjeta activa'}
           </button>
         </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
+          <span className="font-semibold text-gray-700">Tarjeta activa actual:</span>
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-sm text-gray-700">
+            {currentCardUid ? currentCardUid : 'Sin tarjeta registrada'}
+          </span>
+        </div>
         <p className="text-xs text-gray-500">
-          Al guardar, se desactivan tarjetas anteriores y se crea una nueva activa con este UID.
+          La tarjeta quedará activa inmediatamente y se conservará el historial de tarjetas anteriores.
         </p>
       </div>
 
       {/* Membresía (histórico) */}
-      <div className="border rounded-xl p-4 bg-white space-y-3">
-        <h2 className="font-semibold">Membresía</h2>
+      <div className="border rounded-xl p-4 bg-white space-y-4">
+        <div className="space-y-1">
+          <h2 className="font-semibold">Membresía</h2>
+          <p className="text-sm text-gray-600">
+            Define una nueva vigencia. Al guardar, la membresía quedará activa de inmediato y las anteriores se marcarán como expiradas.
+          </p>
+        </div>
 
         {/* Actual vigente (solo lectura) */}
-        <div className="text-sm text-gray-700">
-          <div>Vigente actual: {currentStart ? `${new Date(currentStart).toLocaleDateString()} → ${new Date(currentEnd).toLocaleDateString()}` : '—'}</div>
+        <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3 text-sm text-gray-700">
+          {currentStart ? (
+            <div className="space-y-1">
+              <div>
+                <span className="font-semibold text-gray-800">Plan actual:</span>{' '}
+                {currentPlan ?? 'Sin especificar'}
+              </div>
+              <div>
+                <span className="font-semibold text-gray-800">Vigencia:</span>{' '}
+                {new Date(currentStart).toLocaleDateString()} → {new Date(currentEnd).toLocaleDateString()}
+              </div>
+            </div>
+          ) : (
+            <div>No hay una membresía activa registrada.</div>
+          )}
         </div>
 
         {/* Nueva membresía */}
-        <div className="grid sm:grid-cols-3 gap-3">
+        <div className="grid gap-3 sm:grid-cols-3">
           <label className="text-sm">
             Tipo de membresía
             <select
-              className="border p-2 w-full rounded-lg"
+              className="mt-1 w-full rounded-lg border p-2"
               value={memPlan}
               onChange={(e)=>setMemPlan(e.target.value as Plan)}
             >
@@ -523,7 +569,7 @@ export default function AthleteEditPage() {
             Fecha de inicio
             <input
               type="date"
-              className="border p-2 w-full rounded-lg"
+              className="mt-1 w-full rounded-lg border p-2"
               value={memStart}
               onChange={(e)=>setMemStart(e.target.value)}
             />
@@ -532,28 +578,37 @@ export default function AthleteEditPage() {
             Fecha de vencimiento
             <input
               type="date"
-              className="border p-2 w-full rounded-lg"
+              className="mt-1 w-full rounded-lg border p-2"
               value={memEnd}
               onChange={(e)=>setMemEnd(e.target.value)}
             />
           </label>
         </div>
-        <div className="flex gap-3">
-          <button disabled={busy} onClick={createNewMembership} className="px-4 py-2 rounded-xl border shadow bg-white disabled:opacity-60">
-            {busy ? 'Guardando…' : 'Crear nueva membresía'}
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={createNewMembership}
+            className="rounded-xl border bg-white px-4 py-2 font-medium shadow disabled:opacity-60"
+          >
+            {busy ? 'Guardando…' : 'Crear y activar membresía'}
           </button>
           <button
+            type="button"
             disabled={busy}
             onClick={() => {
               const base = memStart ? new Date(memStart) : new Date()
               const end = memPlan === 'Anual' ? addMonths(base, 12) : addMonths(base, 1)
               setMemEnd(fmtDate(end))
             }}
-            className="px-4 py-2 rounded-xl border shadow bg-white disabled:opacity-60"
+            className="rounded-xl border bg-white px-4 py-2 shadow disabled:opacity-60"
           >
-            Recalcular fin según plan
+            Calcular fechas según plan
           </button>
         </div>
+        <p className="text-xs text-gray-500">
+          Revisa que las fechas sean correctas antes de guardar. El historial de membresías anteriores se conserva.
+        </p>
       </div>
 
       {/* Historial de accesos (últimos 20) */}
