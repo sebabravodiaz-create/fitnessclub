@@ -41,7 +41,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({} as any))
 
     const rawUID = (body?.cardUID ?? '').toString()
-    const cleanedUID = rawUID.replace(/^0+/, '').trim()
+    const rawUIDTrimmed = rawUID.trim()
+    const cleanedUID = rawUID.replace(/^0+/, '').trim().toUpperCase()
+    const sanitizedRawUID = rawUIDTrimmed || '(vacío)'
+    const sanitizedCleanedUID = cleanedUID || '(vacío)'
 
     if (!cleanedUID) {
       return Response.json({ ok: false, error: 'cardUID requerido' }, { status: 400 })
@@ -94,7 +97,7 @@ export async function POST(req: NextRequest) {
     if (!card) {
       // Tarjeta no registrada o inactiva
       result = 'unknown_card'
-      note = 'Tarjeta no registrada o inactiva'
+      note = `Tarjeta no registrada o inactiva. UID recibido: ${sanitizedRawUID} (normalizado: ${sanitizedCleanedUID})`
     } else {
       const athleteRel = card.athletes
       const athleteObj = Array.isArray(athleteRel) ? athleteRel[0] : athleteRel
@@ -123,14 +126,19 @@ export async function POST(req: NextRequest) {
       if (covering) {
         result = 'allowed'
         membership = { plan: covering.plan ?? null, end_date: covering.end_date ?? null }
+        const plan = membership?.plan ? ` (${membership.plan})` : ''
+        note = `Acceso permitido. Membresía vigente${plan}. UID normalizado: ${sanitizedCleanedUID}`
       } else if (activeMems.some(m => new Date(m.end_date) < today)) {
         result = 'expired'
         const lastExpired = activeMems
           .filter(m => new Date(m.end_date) < today)
           .sort((a, b) => (a.end_date < b.end_date ? 1 : -1))[0]
         membership = { plan: lastExpired?.plan ?? null, end_date: lastExpired?.end_date ?? null }
+        const endDate = membership?.end_date ?? 'sin fecha'
+        note = `Membresía expirada al ${endDate}. UID normalizado: ${sanitizedCleanedUID}`
       } else {
         result = 'denied'
+        note = `Sin membresía vigente activa a la fecha. UID normalizado: ${sanitizedCleanedUID}`
       }
     }
 
@@ -154,6 +162,15 @@ export async function POST(req: NextRequest) {
     }
 
     // 4) Responder al kiosk
+    console.info('[access.validate] Registro de acceso', {
+      result,
+      rawUID: rawUIDTrimmed,
+      cleanedUID,
+      cardId: card?.id ?? null,
+      athleteId: athlete?.id ?? null,
+      note,
+    })
+
     return Response.json({
       ok: result === 'allowed',
       access_id: inserted?.id ?? null,
@@ -162,6 +179,7 @@ export async function POST(req: NextRequest) {
       uid: cleanedUID,
       athlete,
       membership,
+      note,
     })
   } catch (err: any) {
     console.error('[access.validate] error:', err)

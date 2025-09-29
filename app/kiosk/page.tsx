@@ -6,8 +6,9 @@ type AccessResult = {
   uid: string
   membership?: string
   endDate?: string
-  status: 'allowed' | 'expired' | 'unknown_card'
+  status: 'allowed' | 'expired' | 'unknown_card' | 'denied'
   photoUrl?: string | null
+  note?: string
 }
 
 function formatDate(dateStr?: string) {
@@ -82,6 +83,11 @@ export default function KioskPage() {
     clearBufferTimeout()
     const cleanedUID = normalizeUID(cardUID)
 
+    console.info('[kiosk] Validando tarjeta', {
+      rawUID: cardUID,
+      cleanedUID,
+    })
+
     if (!cleanedUID) {
       setStatus('fail')
       setMessage('UID inválido')
@@ -108,6 +114,13 @@ export default function KioskPage() {
         body: JSON.stringify({ cardUID: cleanedUID }),
       })
       const data = await res.json()
+      console.info('[kiosk] Resultado validación', {
+        cleanedUID,
+        status: res.status,
+        ok: data?.ok,
+        result: data?.result,
+        note: data?.note,
+      })
       const responseUID = typeof data.uid === 'string' ? data.uid : cleanedUID
       const normalizedResponseUID = normalizeUID(responseUID)
 
@@ -123,6 +136,7 @@ export default function KioskPage() {
           endDate: data.membership?.end_date,
           status: 'allowed',
           photoUrl: data.athlete?.photo_url || null,
+          note: data.note,
         })
       } else if (data.result === 'expired') {
         setStatus('fail')
@@ -136,10 +150,26 @@ export default function KioskPage() {
           endDate: data.membership?.end_date,
           status: 'expired',
           photoUrl: data.athlete?.photo_url || null,
+          note: data.note,
+        })
+      } else if (data.result === 'denied') {
+        setStatus('fail')
+        const failureNote = data.note ? `\n${data.note}` : ''
+        setMessage(`❌ ACCESO DENEGADO\nUID: ${normalizedResponseUID}${failureNote}`)
+        setLastEndDate('')
+        setLastPhotoUrl('')
+        addToHistory({
+          name: data.athlete?.name || 'Desconocido',
+          uid: normalizedResponseUID,
+          membership: 'Sin membresía vigente',
+          status: 'denied',
+          photoUrl: data.athlete?.photo_url || null,
+          note: data.note,
         })
       } else {
         setStatus('fail')
-        setMessage(`❌ TARJETA DESCONOCIDA\nUID: ${normalizedResponseUID}`)
+        const failureNote = data.note ? `\n${data.note}` : ''
+        setMessage(`❌ TARJETA DESCONOCIDA\nUID: ${normalizedResponseUID}${failureNote}`)
         setLastEndDate('')
         setLastPhotoUrl('')
         addToHistory({
@@ -148,9 +178,14 @@ export default function KioskPage() {
           membership: 'N/A',
           status: 'unknown_card',
           photoUrl: null,
+          note: data.note,
         })
       }
-    } catch {
+    } catch (error) {
+      console.error('[kiosk] Error validando tarjeta', {
+        cleanedUID,
+        error,
+      })
       setStatus('fail')
       setMessage(`Error de validación\nUID: ${cleanedUID}`)
       setLastPhotoUrl('')
@@ -245,6 +280,9 @@ export default function KioskPage() {
               <p className="text-sm text-gray-700">Membresía: {h.membership}</p>
               {h.endDate && (
                 <p className="text-sm text-gray-500">Vence: {formatDate(h.endDate)}</p>
+              )}
+              {h.note && (
+                <p className="text-xs text-gray-500 whitespace-pre-line">{h.note}</p>
               )}
             </div>
           ))}
