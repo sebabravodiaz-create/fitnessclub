@@ -33,6 +33,10 @@ type AccessLog = {
 
 const PLACEHOLDER_PHOTO = '/images/athlete-placeholder.svg'
 
+function normalizeUID(uid: string) {
+  return uid.replace(/^0+/, '').trim().toUpperCase()
+}
+
 function fmtDate(d: Date) {
   return d.toISOString().slice(0, 10)
 }
@@ -136,7 +140,8 @@ export default function AthleteEditPage() {
       .eq('active', true)
       .limit(1)
       .maybeSingle()
-    setRfid((card as any)?.uid ?? '')
+    const activeUID = ((card as any)?.uid as string | undefined) ?? ''
+    setRfid(normalizeUID(activeUID))
 
     // 3) Membresía vigente (para mostrar actual) + defaults para nueva
     const today = fmtDate(new Date())
@@ -266,27 +271,34 @@ export default function AthleteEditPage() {
   // ---- Guardar/Asignar RFID con HISTÓRICO ----
   async function saveRFID() {
     if (!ath) return
-    const uid = rfid.trim()
-    if (!uid) { setMsg('RFID no puede estar vacío.'); return }
+    const cleanedUID = normalizeUID(rfid)
+    if (!cleanedUID) { setMsg('RFID no puede estar vacío.'); return }
 
-    setBusy(true); setMsg(null)
+    setBusy(true)
+    setMsg(null)
 
-    // 1) Desactivar cualquier tarjeta activa anterior
-    const { error: deactErr } = await supabase
-      .from('cards')
-      .update({ active: false })
-      .eq('athlete_id', ath.id)
-      .eq('active', true)
-    if (deactErr) { setMsg(deactErr.message); setBusy(false); return }
+    try {
+      // 1) Desactivar cualquier tarjeta activa anterior
+      const { error: deactErr } = await supabase
+        .from('cards')
+        .update({ active: false })
+        .eq('athlete_id', ath.id)
+        .eq('active', true)
+      if (deactErr) throw deactErr
 
-    // 2) Crear nueva tarjeta activa con UID nuevo
-    const { error: insErr } = await supabase
-      .from('cards')
-      .insert({ athlete_id: ath.id, uid, active: true })
-    if (insErr) { setMsg(insErr.message); setBusy(false); return }
+      // 2) Crear nueva tarjeta activa con UID nuevo (sin ceros a la izquierda)
+      const { error: insErr } = await supabase
+        .from('cards')
+        .insert({ athlete_id: ath.id, uid: cleanedUID, active: true })
+      if (insErr) throw insErr
 
-    setMsg('Nueva tarjeta asignada (histórico preservado).')
-    setBusy(false)
+      setMsg('Nueva tarjeta asignada (histórico preservado).')
+      setRfid(cleanedUID)
+    } catch (err: any) {
+      setMsg(err?.message ?? 'No se pudo asignar la tarjeta.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   // ---- Crear NUEVA membresía (histórico) ----
@@ -577,7 +589,7 @@ export default function AthleteEditPage() {
                   <tr key={l.id} className="border-t">
                     <td className="px-3 py-2">{new Date(l.ts).toLocaleString()}</td>
                     <td className="px-3 py-2">{l.result}</td>
-                    <td className="px-3 py-2">{l.card_uid ?? '—'}</td>
+                    <td className="px-3 py-2">{l.card_uid ? normalizeUID(l.card_uid) : '—'}</td>
                     <td className="px-3 py-2">{l.note ?? '—'}</td>
                   </tr>
                 ))}
