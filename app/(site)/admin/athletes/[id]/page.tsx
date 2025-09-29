@@ -33,6 +33,10 @@ type AccessLog = {
 
 const PLACEHOLDER_PHOTO = '/images/athlete-placeholder.svg'
 
+function normalizeUID(uid: string) {
+  return uid.replace(/^0+/, '').trim().toUpperCase()
+}
+
 function fmtDate(d: Date) {
   return d.toISOString().slice(0, 10)
 }
@@ -137,7 +141,7 @@ export default function AthleteEditPage() {
       .limit(1)
       .maybeSingle()
     const activeUID = ((card as any)?.uid as string | undefined) ?? ''
-    setRfid(activeUID.replace(/^0+/, ''))
+    setRfid(normalizeUID(activeUID))
 
     // 3) Membresía vigente (para mostrar actual) + defaults para nueva
     const today = fmtDate(new Date())
@@ -267,8 +271,7 @@ export default function AthleteEditPage() {
   // ---- Guardar/Asignar RFID con HISTÓRICO ----
   async function saveRFID() {
     if (!ath) return
-    const rawUID = rfid.trim()
-    const cleanedUID = rawUID.replace(/^0+/, '')
+    const cleanedUID = normalizeUID(rfid)
     if (!cleanedUID) { setMsg('RFID no puede estar vacío.'); return }
 
     setBusy(true)
@@ -586,7 +589,7 @@ export default function AthleteEditPage() {
                   <tr key={l.id} className="border-t">
                     <td className="px-3 py-2">{new Date(l.ts).toLocaleString()}</td>
                     <td className="px-3 py-2">{l.result}</td>
-                    <td className="px-3 py-2">{l.card_uid ?? '—'}</td>
+                    <td className="px-3 py-2">{l.card_uid ? normalizeUID(l.card_uid) : '—'}</td>
                     <td className="px-3 py-2">{l.note ?? '—'}</td>
                   </tr>
                 ))}

@@ -23,7 +23,6 @@ const PLACEHOLDER_PHOTO = '/images/athlete-placeholder.svg'
 
 export default function KioskPage() {
   // 1) Hooks SIEMPRE arriba y en el mismo orden
-  const [mounted, setMounted] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const [status, setStatus] = useState<'idle' | 'ok' | 'fail'>('idle')
   const [message, setMessage] = useState<string>('Acerca la tarjeta...')
@@ -32,16 +31,14 @@ export default function KioskPage() {
   const [lastPhotoUrl, setLastPhotoUrl] = useState<string>('')
   const [history, setHistory] = useState<AccessResult[]>([])
   const bufferRef = useRef<string>('')
-  const timeoutRef = useRef<any>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 2) Efecto de montaje (no acceder a window fuera de efectos)
   useEffect(() => {
-    setMounted(true)
+    return () => clearBufferTimeout()
   }, [])
 
-  // 3) Foco y listeners solo cuando ya hay window
+  // 2) Foco y listeners (solo en cliente al ejecutar el efecto)
   useEffect(() => {
-    if (!mounted) return
     const focusInput = () => inputRef.current?.focus()
     focusInput()
     const onClick = () => focusInput()
@@ -51,11 +48,10 @@ export default function KioskPage() {
       window.removeEventListener('click', onClick)
       window.removeEventListener('touchstart', onClick)
     }
-  }, [mounted])
+  }, [])
 
-  // 4) Lectura por teclado (solo tras montaje)
+  // 3) Lectura por teclado
   useEffect(() => {
-    if (!mounted) return
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         const uid = bufferRef.current.trim()
@@ -64,24 +60,26 @@ export default function KioskPage() {
       } else {
         if (/^[A-Za-z0-9]$/.test(e.key)) {
           bufferRef.current += e.key
-          clearTimeout(timeoutRef.current)
+          clearBufferTimeout()
           timeoutRef.current = setTimeout(() => {
             const uid = bufferRef.current.trim()
             bufferRef.current = ''
             if (uid) validate(uid)
+            timeoutRef.current = null
           }, 200)
         }
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [mounted])
+  }, [])
 
   function normalizeUID(uid: string) {
     return uid.replace(/^0+/, '').trim().toUpperCase()
   }
 
   async function validate(cardUID: string) {
+    clearBufferTimeout()
     const cleanedUID = normalizeUID(cardUID)
 
     if (!cleanedUID) {
@@ -171,9 +169,11 @@ export default function KioskPage() {
     setHistory(prev => [entry, ...prev].slice(0, 20))
   }
 
-  // 5) Render “placeholder” mientras montamos para evitar hydration mismatch
-  if (!mounted) {
-    return <div className="h-screen w-screen bg-gray-50" />
+  function clearBufferTimeout() {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
   }
 
   return (
@@ -181,20 +181,20 @@ export default function KioskPage() {
       {/* Panel central */}
       <div
         className={[
-      'flex-1 flex items-center justify-center',
-      status === 'ok' ? 'bg-green-200' : status === 'fail' ? 'bg-red-200' : 'bg-gray-50',
-    ].join(' ')}
-  >
-    <div className="text-center px-6">
-        <div className="flex justify-center mb-6">
-          <img
-            src={lastPhotoUrl || PLACEHOLDER_PHOTO}
-            alt="Foto del deportista"
-            className="w-40 h-40 rounded-full object-cover border-4 border-white shadow"
-          />
-        </div>
-      <h1 className="text-5xl font-bold mb-6">Control de Acceso</h1>
-      <p className="text-3xl font-semibold whitespace-pre-line">{message}</p>
+          'flex-1 flex items-center justify-center',
+          status === 'ok' ? 'bg-green-200' : status === 'fail' ? 'bg-red-200' : 'bg-gray-50',
+        ].join(' ')}
+      >
+        <div className="text-center px-6">
+          <div className="flex justify-center mb-6">
+            <img
+              src={lastPhotoUrl || PLACEHOLDER_PHOTO}
+              alt="Foto del deportista"
+              className="w-40 h-40 rounded-full object-cover border-4 border-white shadow"
+            />
+          </div>
+          <h1 className="text-5xl font-bold mb-6">Control de Acceso</h1>
+          <p className="text-3xl font-semibold whitespace-pre-line">{message}</p>
 
           {lastUID && (
             <p className="text-xl text-gray-600 mt-4">
@@ -208,11 +208,13 @@ export default function KioskPage() {
           <input
             ref={inputRef}
             className="opacity-0 absolute pointer-events-none"
+            type="text"
             inputMode="none"
             autoCapitalize="off"
             autoCorrect="off"
             autoComplete="off"
-            aria-hidden="true"
+            tabIndex={-1}
+            aria-label="Escáner de tarjetas"
           />
         </div>
       </div>
