@@ -83,11 +83,6 @@ export default function KioskPage() {
     clearBufferTimeout()
     const cleanedUID = normalizeUID(cardUID)
 
-    console.info('[kiosk] Validando tarjeta', {
-      rawUID: cardUID,
-      cleanedUID,
-    })
-
     if (!cleanedUID) {
       setStatus('fail')
       setMessage('UID inválido')
@@ -114,13 +109,6 @@ export default function KioskPage() {
         body: JSON.stringify({ cardUID: cleanedUID }),
       })
       const data = await res.json()
-      console.info('[kiosk] Resultado validación', {
-        cleanedUID,
-        status: res.status,
-        ok: data?.ok,
-        result: data?.result,
-        note: data?.note,
-      })
       const responseUID = typeof data.uid === 'string' ? data.uid : cleanedUID
       const normalizedResponseUID = normalizeUID(responseUID)
 
@@ -182,10 +170,6 @@ export default function KioskPage() {
         })
       }
     } catch (error) {
-      console.error('[kiosk] Error validando tarjeta', {
-        cleanedUID,
-        error,
-      })
       setStatus('fail')
       setMessage(`Error de validación\nUID: ${cleanedUID}`)
       setLastPhotoUrl('')
