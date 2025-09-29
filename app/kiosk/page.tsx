@@ -77,8 +77,26 @@ export default function KioskPage() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [mounted])
 
+  function normalizeUID(uid: string) {
+    return uid.replace(/^0+/, '').trim().toUpperCase()
+  }
+
   async function validate(cardUID: string) {
-    const cleanedUID = cardUID.replace(/^0+/, '')
+    const cleanedUID = normalizeUID(cardUID)
+
+    if (!cleanedUID) {
+      setStatus('fail')
+      setMessage('UID inválido')
+      setLastUID('')
+      setLastEndDate('')
+      setLastPhotoUrl('')
+      setTimeout(() => {
+        setStatus('idle')
+        setMessage('Acerca la tarjeta...')
+      }, 2000)
+      return
+    }
+
     setLastUID(cleanedUID)
     setMessage('Validando...')
     setStatus('idle')
@@ -92,6 +110,8 @@ export default function KioskPage() {
         body: JSON.stringify({ cardUID: cleanedUID }),
       })
       const data = await res.json()
+      const responseUID = typeof data.uid === 'string' ? data.uid : cleanedUID
+      const normalizedResponseUID = normalizeUID(responseUID)
 
       if (data.ok && data.result === 'allowed') {
         setStatus('ok')
@@ -100,7 +120,7 @@ export default function KioskPage() {
         setLastPhotoUrl(data.athlete?.photo_url || '')
         addToHistory({
           name: data.athlete.name,
-          uid: data.uid,
+          uid: normalizedResponseUID,
           membership: 'Vigente',
           endDate: data.membership?.end_date,
           status: 'allowed',
@@ -113,7 +133,7 @@ export default function KioskPage() {
         setLastPhotoUrl(data.athlete?.photo_url || '')
         addToHistory({
           name: data.athlete?.name || 'Desconocido',
-          uid: data.uid,
+          uid: normalizedResponseUID,
           membership: 'Expirada',
           endDate: data.membership?.end_date,
           status: 'expired',
@@ -121,12 +141,12 @@ export default function KioskPage() {
         })
       } else {
         setStatus('fail')
-        setMessage(`❌ TARJETA DESCONOCIDA\nUID: ${data.uid}`)
+        setMessage(`❌ TARJETA DESCONOCIDA\nUID: ${normalizedResponseUID}`)
         setLastEndDate('')
         setLastPhotoUrl('')
         addToHistory({
           name: 'Desconocido',
-          uid: data.uid,
+          uid: normalizedResponseUID,
           membership: 'N/A',
           status: 'unknown_card',
           photoUrl: null,
