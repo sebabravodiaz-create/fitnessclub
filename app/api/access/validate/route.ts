@@ -132,10 +132,13 @@ export async function POST(req: NextRequest) {
       if (memErr) throw memErr
       memberships = mems ?? []
 
+      const parseDate = (value?: string | null) => (value ? new Date(value) : null)
+
       const activeMems = memberships.filter(m => (m.status ?? 'active') === 'active')
       const covering = activeMems.find(m => {
-        const start = new Date(m.start_date)
-        const end = new Date(m.end_date)
+        const start = parseDate(m.start_date)
+        const end = parseDate(m.end_date)
+        if (!start || !end) return false
         return start <= today && today <= end
       })
 
@@ -147,19 +150,23 @@ export async function POST(req: NextRequest) {
           start_date: covering.start_date ?? null,
           end_date: covering.end_date ?? null,
         }
-      } else if (activeMems.some(m => new Date(m.end_date) < today)) {
-        result = 'expired'
-        const lastExpired = activeMems
-          .filter(m => new Date(m.end_date) < today)
-          .sort((a, b) => (a.end_date < b.end_date ? 1 : -1))[0]
-        membership = {
-          plan: lastExpired?.plan ?? null,
-          status: lastExpired?.status ?? 'expired',
-          start_date: lastExpired?.start_date ?? null,
-          end_date: lastExpired?.end_date ?? null,
-        }
       } else {
-        result = 'denied'
+        const expiredMems = activeMems
+          .map(m => ({ ...m, end: parseDate(m.end_date) }))
+          .filter(m => m.end && m.end < today)
+
+        if (expiredMems.length > 0) {
+          result = 'expired'
+          const lastExpired = expiredMems.sort((a, b) => (a.end! < b.end! ? 1 : -1))[0]
+          membership = {
+            plan: lastExpired?.plan ?? null,
+            status: lastExpired?.status ?? 'expired',
+            start_date: lastExpired?.start_date ?? null,
+            end_date: lastExpired?.end_date ?? null,
+          }
+        } else {
+          result = 'denied'
+        }
       }
     }
 
