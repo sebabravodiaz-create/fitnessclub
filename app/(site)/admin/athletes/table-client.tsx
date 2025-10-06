@@ -75,13 +75,6 @@ export default function AthletesClient() {
 
   useEffect(() => { load() }, [])
 
-  const remove = async (id: string) => {
-    if (!confirm('¿Eliminar este atleta?')) return
-    const { error } = await supabase.from('athletes').delete().eq('id', id)
-    if (error) { alert(error.message); return }
-    load()
-  }
-
   return (
     <div className="grid gap-4">
       {/* Buscador global */}
@@ -110,7 +103,7 @@ export default function AthletesClient() {
               <th className="w-[120px]">PLAN</th>
               <th className="w-[140px]">VENCIMIENTO</th>
               <th className="w-[100px]">ESTADO</th>
-              <th className="w-[120px]">ACCIONES</th>
+              <th className="w-[80px]">ACCIONES</th>
             </tr>
           </thead>
           <tbody>
@@ -130,19 +123,13 @@ export default function AthletesClient() {
                   <td className="capitalize">{memb?.plan ?? '—'}</td>
                   <td>{fmtDate(memb?.end_date)}</td>
                   <td className="capitalize">{memb?.status ?? '—'}</td>
-                  <td className="flex gap-2">
+                  <td>
                     <Link
                       href={`/admin/athletes/${r.id}`}
                       className="text-blue-600 hover:underline"
                     >
                       Editar
                     </Link>
-                    <button
-                      onClick={() => remove(r.id)}
-                      className="text-red-600 hover:underline"
-                    >
-                      Eliminar
-                    </button>
                   </td>
                 </tr>
               )
