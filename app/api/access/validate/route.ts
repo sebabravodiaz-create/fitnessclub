@@ -138,7 +138,10 @@ export async function POST(req: NextRequest) {
 
       const parseDate = (value?: string | null) => (value ? new Date(value) : null)
 
-      const activeMems = memberships.filter(m => (m.status ?? 'active') === 'active')
+      const normalizeStatus = (status?: string | null) => (status ?? 'active').toLowerCase()
+
+      const activeMems = memberships.filter(m => normalizeStatus(m.status) === 'active')
+      const soldMems = memberships.filter(m => normalizeStatus(m.status) === 'sold')
       const covering = activeMems.find(m => {
         const start = parseDate(m.start_date)
         const end = parseDate(m.end_date)
@@ -167,6 +170,21 @@ export async function POST(req: NextRequest) {
             status: lastExpired?.status ?? 'expired',
             start_date: lastExpired?.start_date ?? null,
             end_date: lastExpired?.end_date ?? null,
+          }
+        } else if (soldMems.length > 0) {
+          result = 'expired'
+          const lastSold = soldMems
+            .slice()
+            .sort((a, b) => {
+              const aTime = parseDate(a.end_date ?? a.start_date ?? undefined)?.getTime() ?? 0
+              const bTime = parseDate(b.end_date ?? b.start_date ?? undefined)?.getTime() ?? 0
+              return bTime - aTime
+            })[0]
+          membership = {
+            plan: lastSold?.plan ?? null,
+            status: lastSold?.status ?? 'sold',
+            start_date: lastSold?.start_date ?? null,
+            end_date: lastSold?.end_date ?? null,
           }
         } else {
           result = 'denied'
