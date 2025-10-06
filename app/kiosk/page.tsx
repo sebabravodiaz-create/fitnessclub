@@ -185,6 +185,13 @@ export default function KioskPage() {
             <p className="text-lg text-gray-700 mt-2">Vence: {formatDate(lastEndDate)}</p>
           )}
 
+          <a
+            href="/kiosk/manual"
+            className="mt-8 inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-base font-semibold text-slate-700 shadow hover:bg-white"
+          >
+            🔍 Búsqueda manual
+          </a>
+
           <input
             ref={inputRef}
             className="opacity-0 absolute pointer-events-none"
