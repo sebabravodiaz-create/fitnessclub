@@ -106,15 +106,18 @@ export default function KioskPage() {
           status: 'allowed',
           photoUrl: data.athlete?.photo_url || null,
         })
-      } else if (data.result === 'expired') {
+      } else if (data.result === 'expired' || data.result === 'denied') {
+        const isSold = data.result === 'denied' || data.membership?.status === 'sold'
         setStatus('fail')
-        setMessage(`⚠️ MEMBRESÍA EXPIRADA\n${data.athlete?.name || ''}`)
+        setMessage(
+          `${isSold ? '⚠️ SUSCRIPCIÓN VENCIDA' : '⚠️ MEMBRESÍA EXPIRADA'}\n${data.athlete?.name || ''}`,
+        )
         setLastEndDate(data.membership?.end_date || '')
         setLastPhotoUrl(data.athlete?.photo_url || '')
         addToHistory({
           name: data.athlete?.name || 'Desconocido',
           uid: data.uid,
-          membership: 'Expirada',
+          membership: isSold ? 'Vencida' : 'Expirada',
           endDate: data.membership?.end_date,
           status: 'expired',
           photoUrl: data.athlete?.photo_url || null,
@@ -157,7 +160,15 @@ export default function KioskPage() {
   }
 
   return (
-    <div className="h-screen w-screen flex select-none bg-gray-50">
+    <div className="relative h-screen w-screen flex select-none bg-gray-50">
+      <a
+        href="/kiosk/manual"
+        className="absolute left-6 top-6 inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/80 text-2xl text-slate-700 shadow transition hover:bg-white"
+        aria-label="Búsqueda manual"
+      >
+        🔍
+      </a>
+
       {/* Panel central */}
       <div
         className={[
@@ -184,14 +195,6 @@ export default function KioskPage() {
           {lastEndDate && (
             <p className="text-lg text-gray-700 mt-2">Vence: {formatDate(lastEndDate)}</p>
           )}
-
-          <a
-            href="/kiosk/manual"
-            className="mt-8 inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-base font-semibold text-slate-700 shadow hover:bg-white"
-          >
-            🔍 Búsqueda manual
-          </a>
-
           <input
             ref={inputRef}
             className="opacity-0 absolute pointer-events-none"
