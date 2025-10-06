@@ -88,8 +88,20 @@ export async function POST(req: NextRequest) {
 
     let result: AccessResult
     let note = ''
-    let athlete: { id?: string; name?: string | null; photo_url?: string | null } | null = null
-    let membership: { plan?: string | null; end_date?: string | null } | null = null
+    let athlete:
+      | {
+          id?: string
+          name?: string | null
+          email?: string | null
+          phone?: string | null
+          photo_url?: string | null
+        }
+      | null = null
+    let membership:
+      | { plan?: string | null; status?: string | null; start_date?: string | null; end_date?: string | null }
+      | null = null
+
+    let memberships: { plan?: string | null; status?: string | null; start_date?: string | null; end_date?: string | null }[] = []
 
     if (!card) {
       // Tarjeta no registrada o inactiva
@@ -104,7 +116,13 @@ export async function POST(req: NextRequest) {
       const photoUrl = photoPath
         ? supabase.storage.from(ATHLETE_PHOTOS_BUCKET).getPublicUrl(photoPath).data?.publicUrl ?? null
         : null
-      athlete = { id: card.athlete_id, name: athleteObj?.name ?? null, photo_url: photoUrl }
+      athlete = {
+        id: card.athlete_id,
+        name: athleteObj?.name ?? null,
+        email: athleteObj?.email ?? null,
+        phone: athleteObj?.phone ?? null,
+        photo_url: photoUrl,
+      }
 
       // 2) Buscar membresías del atleta y evaluar vigencia
       const { data: mems, error: memErr } = await supabase
@@ -112,25 +130,47 @@ export async function POST(req: NextRequest) {
         .select('plan, status, start_date, end_date')
         .eq('athlete_id', card.athlete_id)
       if (memErr) throw memErr
+      memberships = (mems ?? []).slice().sort((a, b) => {
+        const aTime = a.start_date ? new Date(a.start_date).getTime() : 0
+        const bTime = b.start_date ? new Date(b.start_date).getTime() : 0
+        return bTime - aTime
+      })
 
-      const activeMems = (mems ?? []).filter(m => (m.status ?? 'active') === 'active')
+      const parseDate = (value?: string | null) => (value ? new Date(value) : null)
+
+      const activeMems = memberships.filter(m => (m.status ?? 'active') === 'active')
       const covering = activeMems.find(m => {
-        const start = new Date(m.start_date)
-        const end = new Date(m.end_date)
+        const start = parseDate(m.start_date)
+        const end = parseDate(m.end_date)
+        if (!start || !end) return false
         return start <= today && today <= end
       })
 
       if (covering) {
         result = 'allowed'
-        membership = { plan: covering.plan ?? null, end_date: covering.end_date ?? null }
-      } else if (activeMems.some(m => new Date(m.end_date) < today)) {
-        result = 'expired'
-        const lastExpired = activeMems
-          .filter(m => new Date(m.end_date) < today)
-          .sort((a, b) => (a.end_date < b.end_date ? 1 : -1))[0]
-        membership = { plan: lastExpired?.plan ?? null, end_date: lastExpired?.end_date ?? null }
+        membership = {
+          plan: covering.plan ?? null,
+          status: covering.status ?? 'active',
+          start_date: covering.start_date ?? null,
+          end_date: covering.end_date ?? null,
+        }
       } else {
-        result = 'denied'
+        const expiredMems = activeMems
+          .map(m => ({ ...m, end: parseDate(m.end_date) }))
+          .filter(m => m.end && m.end < today)
+
+        if (expiredMems.length > 0) {
+          result = 'expired'
+          const lastExpired = expiredMems.sort((a, b) => (a.end! < b.end! ? 1 : -1))[0]
+          membership = {
+            plan: lastExpired?.plan ?? null,
+            status: lastExpired?.status ?? 'expired',
+            start_date: lastExpired?.start_date ?? null,
+            end_date: lastExpired?.end_date ?? null,
+          }
+        } else {
+          result = 'denied'
+        }
       }
     }
 
@@ -160,8 +200,11 @@ export async function POST(req: NextRequest) {
       ts: inserted?.ts ?? payload.ts,
       result,
       uid: cleanedUID,
+      raw_uid: rawUID,
       athlete,
       membership,
+      memberships,
+      note,
     })
   } catch (err: any) {
     console.error('[access.validate] error:', err)
