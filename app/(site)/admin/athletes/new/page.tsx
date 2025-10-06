@@ -110,7 +110,7 @@ export default function AthleteNewPage() {
           plan,
           start_date: start,
           end_date: end,
-          status: 'activo'
+          status: 'active'
         })
       if (mErr) throw mErr
 
