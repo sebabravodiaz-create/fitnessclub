@@ -1,13 +1,15 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import { normalizeCardUID } from '@/lib/cardUID'
 
 type AccessResult = {
   name: string
   uid: string
   membership?: string
   endDate?: string
-  status: 'allowed' | 'expired' | 'unknown_card'
+  status: 'allowed' | 'expired' | 'unknown_card' | 'denied'
   photoUrl?: string | null
+  note?: string
 }
 
 function formatDate(dateStr?: string) {
@@ -23,7 +25,6 @@ const PLACEHOLDER_PHOTO = '/images/athlete-placeholder.svg'
 
 export default function KioskPage() {
   // 1) Hooks SIEMPRE arriba y en el mismo orden
-  const [mounted, setMounted] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const [status, setStatus] = useState<'idle' | 'ok' | 'fail'>('idle')
   const [message, setMessage] = useState<string>('Acerca la tarjeta...')
@@ -32,16 +33,14 @@ export default function KioskPage() {
   const [lastPhotoUrl, setLastPhotoUrl] = useState<string>('')
   const [history, setHistory] = useState<AccessResult[]>([])
   const bufferRef = useRef<string>('')
-  const timeoutRef = useRef<any>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 2) Efecto de montaje (no acceder a window fuera de efectos)
   useEffect(() => {
-    setMounted(true)
+    return () => clearBufferTimeout()
   }, [])
 
-  // 3) Foco y listeners solo cuando ya hay window
+  // 2) Foco y listeners (solo en cliente al ejecutar el efecto)
   useEffect(() => {
-    if (!mounted) return
     const focusInput = () => inputRef.current?.focus()
     focusInput()
     const onClick = () => focusInput()
@@ -51,11 +50,10 @@ export default function KioskPage() {
       window.removeEventListener('click', onClick)
       window.removeEventListener('touchstart', onClick)
     }
-  }, [mounted])
+  }, [])
 
-  // 4) Lectura por teclado (solo tras montaje)
+  // 3) Lectura por teclado
   useEffect(() => {
-    if (!mounted) return
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         const uid = bufferRef.current.trim()
@@ -64,21 +62,37 @@ export default function KioskPage() {
       } else {
         if (/^[A-Za-z0-9]$/.test(e.key)) {
           bufferRef.current += e.key
-          clearTimeout(timeoutRef.current)
+          clearBufferTimeout()
           timeoutRef.current = setTimeout(() => {
             const uid = bufferRef.current.trim()
             bufferRef.current = ''
             if (uid) validate(uid)
+            timeoutRef.current = null
           }, 200)
         }
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [mounted])
+  }, [])
 
   async function validate(cardUID: string) {
-    const cleanedUID = cardUID.replace(/^0+/, '')
+    clearBufferTimeout()
+    const cleanedUID = normalizeCardUID(cardUID)
+
+    if (!cleanedUID) {
+      setStatus('fail')
+      setMessage('UID inválido')
+      setLastUID('')
+      setLastEndDate('')
+      setLastPhotoUrl('')
+      setTimeout(() => {
+        setStatus('idle')
+        setMessage('Acerca la tarjeta...')
+      }, 2000)
+      return
+    }
+
     setLastUID(cleanedUID)
     setMessage('Validando...')
     setStatus('idle')
@@ -92,6 +106,8 @@ export default function KioskPage() {
         body: JSON.stringify({ cardUID: cleanedUID }),
       })
       const data = await res.json()
+      const responseUID = typeof data.uid === 'string' ? data.uid : cleanedUID
+      const normalizedResponseUID = normalizeCardUID(responseUID)
 
       if (data.ok && data.result === 'allowed') {
         setStatus('ok')
@@ -100,11 +116,12 @@ export default function KioskPage() {
         setLastPhotoUrl(data.athlete?.photo_url || '')
         addToHistory({
           name: data.athlete.name,
-          uid: data.uid,
+          uid: normalizedResponseUID,
           membership: 'Vigente',
           endDate: data.membership?.end_date,
           status: 'allowed',
           photoUrl: data.athlete?.photo_url || null,
+          note: data.note,
         })
       } else if (data.result === 'expired') {
         setStatus('fail')
@@ -113,26 +130,43 @@ export default function KioskPage() {
         setLastPhotoUrl(data.athlete?.photo_url || '')
         addToHistory({
           name: data.athlete?.name || 'Desconocido',
-          uid: data.uid,
+          uid: normalizedResponseUID,
           membership: 'Expirada',
           endDate: data.membership?.end_date,
           status: 'expired',
           photoUrl: data.athlete?.photo_url || null,
+          note: data.note,
+        })
+      } else if (data.result === 'denied') {
+        setStatus('fail')
+        const failureNote = data.note ? `\n${data.note}` : ''
+        setMessage(`❌ ACCESO DENEGADO\nUID: ${normalizedResponseUID}${failureNote}`)
+        setLastEndDate('')
+        setLastPhotoUrl('')
+        addToHistory({
+          name: data.athlete?.name || 'Desconocido',
+          uid: normalizedResponseUID,
+          membership: 'Sin membresía vigente',
+          status: 'denied',
+          photoUrl: data.athlete?.photo_url || null,
+          note: data.note,
         })
       } else {
         setStatus('fail')
-        setMessage(`❌ TARJETA DESCONOCIDA\nUID: ${data.uid}`)
+        const failureNote = data.note ? `\n${data.note}` : ''
+        setMessage(`❌ TARJETA DESCONOCIDA\nUID: ${normalizedResponseUID}${failureNote}`)
         setLastEndDate('')
         setLastPhotoUrl('')
         addToHistory({
           name: 'Desconocido',
-          uid: data.uid,
+          uid: normalizedResponseUID,
           membership: 'N/A',
           status: 'unknown_card',
           photoUrl: null,
+          note: data.note,
         })
       }
-    } catch {
+    } catch (error) {
       setStatus('fail')
       setMessage(`Error de validación\nUID: ${cleanedUID}`)
       setLastPhotoUrl('')
@@ -151,9 +185,11 @@ export default function KioskPage() {
     setHistory(prev => [entry, ...prev].slice(0, 20))
   }
 
-  // 5) Render “placeholder” mientras montamos para evitar hydration mismatch
-  if (!mounted) {
-    return <div className="h-screen w-screen bg-gray-50" />
+  function clearBufferTimeout() {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
   }
 
   return (
@@ -161,20 +197,20 @@ export default function KioskPage() {
       {/* Panel central */}
       <div
         className={[
-      'flex-1 flex items-center justify-center',
-      status === 'ok' ? 'bg-green-200' : status === 'fail' ? 'bg-red-200' : 'bg-gray-50',
-    ].join(' ')}
-  >
-    <div className="text-center px-6">
-        <div className="flex justify-center mb-6">
-          <img
-            src={lastPhotoUrl || PLACEHOLDER_PHOTO}
-            alt="Foto del deportista"
-            className="w-40 h-40 rounded-full object-cover border-4 border-white shadow"
-          />
-        </div>
-      <h1 className="text-5xl font-bold mb-6">Control de Acceso</h1>
-      <p className="text-3xl font-semibold whitespace-pre-line">{message}</p>
+          'flex-1 flex items-center justify-center',
+          status === 'ok' ? 'bg-green-200' : status === 'fail' ? 'bg-red-200' : 'bg-gray-50',
+        ].join(' ')}
+      >
+        <div className="text-center px-6">
+          <div className="flex justify-center mb-6">
+            <img
+              src={lastPhotoUrl || PLACEHOLDER_PHOTO}
+              alt="Foto del deportista"
+              className="w-40 h-40 rounded-full object-cover border-4 border-white shadow"
+            />
+          </div>
+          <h1 className="text-5xl font-bold mb-6">Control de Acceso</h1>
+          <p className="text-3xl font-semibold whitespace-pre-line">{message}</p>
 
           {lastUID && (
             <p className="text-xl text-gray-600 mt-4">
@@ -188,11 +224,13 @@ export default function KioskPage() {
           <input
             ref={inputRef}
             className="opacity-0 absolute pointer-events-none"
+            type="text"
             inputMode="none"
             autoCapitalize="off"
             autoCorrect="off"
             autoComplete="off"
-            aria-hidden="true"
+            tabIndex={-1}
+            aria-label="Escáner de tarjetas"
           />
         </div>
       </div>
@@ -223,6 +261,9 @@ export default function KioskPage() {
               <p className="text-sm text-gray-700">Membresía: {h.membership}</p>
               {h.endDate && (
                 <p className="text-sm text-gray-500">Vence: {formatDate(h.endDate)}</p>
+              )}
+              {h.note && (
+                <p className="text-xs text-gray-500 whitespace-pre-line">{h.note}</p>
               )}
             </div>
           ))}

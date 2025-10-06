@@ -2,6 +2,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { ATHLETE_PHOTOS_BUCKET } from '@/lib/athletePhotos'
+import { normalizeCardUID } from '@/lib/cardUID'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -30,6 +31,13 @@ function getServerClient() {
   return createClient(url, key, { auth: { persistSession: false } })
 }
 
+function toUTCDateOnly(value: string | Date | null | undefined): Date | null {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+}
+
 function todayUTCDateOnly(): Date {
   const now = new Date()
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
@@ -41,7 +49,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({} as any))
 
     const rawUID = (body?.cardUID ?? '').toString()
-    const cleanedUID = rawUID.replace(/^0+/, '').trim()
+    const rawUIDTrimmed = rawUID.trim()
+    const cleanedUID = normalizeCardUID(rawUID)
+    const sanitizedRawUID = rawUIDTrimmed || '(vacío)'
+    const sanitizedCleanedUID = cleanedUID || '(vacío)'
 
     if (!cleanedUID) {
       return Response.json({ ok: false, error: 'cardUID requerido' }, { status: 400 })
@@ -94,7 +105,7 @@ export async function POST(req: NextRequest) {
     if (!card) {
       // Tarjeta no registrada o inactiva
       result = 'unknown_card'
-      note = 'Tarjeta no registrada o inactiva'
+      note = `Tarjeta no registrada o inactiva. UID recibido: ${sanitizedRawUID} (normalizado: ${sanitizedCleanedUID})`
     } else {
       const athleteRel = card.athletes
       const athleteObj = Array.isArray(athleteRel) ? athleteRel[0] : athleteRel
@@ -115,22 +126,32 @@ export async function POST(req: NextRequest) {
 
       const activeMems = (mems ?? []).filter(m => (m.status ?? 'active') === 'active')
       const covering = activeMems.find(m => {
-        const start = new Date(m.start_date)
-        const end = new Date(m.end_date)
-        return start <= today && today <= end
+        const start = toUTCDateOnly(m.start_date)
+        const end = toUTCDateOnly(m.end_date)
+        if (!start || !end) return false
+        return start.getTime() <= today.getTime() && today.getTime() <= end.getTime()
       })
 
       if (covering) {
         result = 'allowed'
         membership = { plan: covering.plan ?? null, end_date: covering.end_date ?? null }
-      } else if (activeMems.some(m => new Date(m.end_date) < today)) {
+        const plan = membership?.plan ? ` (${membership.plan})` : ''
+        note = `Acceso permitido. Membresía vigente${plan}. UID normalizado: ${sanitizedCleanedUID}`
+      } else if (activeMems.some(m => {
+        const end = toUTCDateOnly(m.end_date)
+        return end ? end.getTime() < today.getTime() : false
+      })) {
         result = 'expired'
         const lastExpired = activeMems
-          .filter(m => new Date(m.end_date) < today)
-          .sort((a, b) => (a.end_date < b.end_date ? 1 : -1))[0]
+          .map(m => ({ ...m, end: toUTCDateOnly(m.end_date) }))
+          .filter(m => m.end && m.end.getTime() < today.getTime())
+          .sort((a, b) => (a.end && b.end ? (a.end < b.end ? 1 : -1) : 0))[0]
         membership = { plan: lastExpired?.plan ?? null, end_date: lastExpired?.end_date ?? null }
+        const endDate = membership?.end_date ?? 'sin fecha'
+        note = `Membresía expirada al ${endDate}. UID normalizado: ${sanitizedCleanedUID}`
       } else {
         result = 'denied'
+        note = `Sin membresía vigente activa a la fecha. UID normalizado: ${sanitizedCleanedUID}`
       }
     }
 
@@ -153,7 +174,6 @@ export async function POST(req: NextRequest) {
       return Response.json({ ok: false, error: insErr.message, result, uid: cleanedUID }, { status: 500 })
     }
 
-    // 4) Responder al kiosk
     return Response.json({
       ok: result === 'allowed',
       access_id: inserted?.id ?? null,
@@ -162,9 +182,9 @@ export async function POST(req: NextRequest) {
       uid: cleanedUID,
       athlete,
       membership,
+      note,
     })
   } catch (err: any) {
-    console.error('[access.validate] error:', err)
     return Response.json({ ok: false, error: err?.message ?? 'Unexpected error' }, { status: 500 })
   }
 }
