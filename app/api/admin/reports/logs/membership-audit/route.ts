@@ -112,9 +112,21 @@ export async function GET(req: NextRequest) {
 
     const rows: AuditRow[] = data.map((log) => {
       const membership = log.membership_id ? membershipsById[log.membership_id] : undefined
-      const periodo = membership?.start_date && membership?.end_date
-        ? `${membership.start_date} → ${membership.end_date}`
-        : null
+      const changes = (log.changes ?? null) as Record<string, unknown> | null
+      const oldSnapshot =
+        changes && typeof changes === 'object' && !Array.isArray(changes)
+          ? (changes.old as Record<string, unknown> | null)
+          : null
+      const oldData =
+        oldSnapshot && typeof oldSnapshot === 'object' && !Array.isArray(oldSnapshot)
+          ? (oldSnapshot as Record<string, unknown>)
+          : null
+
+      const plan = (membership?.plan ?? (oldData?.['plan'] as string | null) ?? null) as string | null
+      const start = (membership?.start_date ?? (oldData?.['start_date'] as string | null) ?? null) as string | null
+      const end = (membership?.end_date ?? (oldData?.['end_date'] as string | null) ?? null) as string | null
+      const status = (membership?.status ?? (oldData?.['status'] as string | null) ?? null) as string | null
+      const periodo = start && end ? `${start} → ${end}` : null
 
       return {
         fecha: log.created_at,
@@ -122,9 +134,9 @@ export async function GET(req: NextRequest) {
         socio: log.athlete_id ? athletesById[log.athlete_id] ?? null : null,
         atleta_id: log.athlete_id ?? null,
         membership_id: log.membership_id ?? null,
-        plan: membership?.plan ?? null,
+        plan,
         periodo,
-        estado_membresia: membership?.status ?? null,
+        estado_membresia: status,
         realizado_por: log.performed_by ?? null,
         cambios: log.changes ? JSON.stringify(log.changes) : null,
       }

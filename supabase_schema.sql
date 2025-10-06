@@ -139,7 +139,11 @@ begin
     athlete := NEW.athlete_id;
   elsif (TG_OP = 'DELETE') then
     payload := jsonb_build_object('old', to_jsonb(OLD));
-    membership := OLD.id;
+    -- Cuando eliminamos la membresía el registro original ya no existe,
+    -- por lo que el FK en membership_audit_logs no puede apuntar a él.
+    -- Guardamos el snapshot completo en "changes" y dejamos el FK en NULL
+    -- para evitar violaciones al eliminar atletas.
+    membership := null;
     athlete := OLD.athlete_id;
   else
     return null;
