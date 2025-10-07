@@ -62,6 +62,8 @@ Copia `.env.example` a `.env.local` y completa según el entorno.
 | `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto Supabase (Project settings → API). |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Clave pública para operaciones desde el cliente. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Clave **service role** usada por APIs protegidas (solo servidor). |
+| `MEMBERSHIP_STATUS_CRON_SECRET` | Token secreto que debe acompañar la llamada diaria a `/api/cron/memberships/status`. |
+| `MEMBERSHIP_STATUS_TIMEZONE` | (Opcional) Zona horaria para calcular el “hoy” efectivo al sincronizar estados (por defecto `UTC`). |
 | `NEXT_PUBLIC_SITE_URL` | URL base del sitio (ej. `http://localhost:3000`). |
 | `NEXT_PUBLIC_API_BASE_URL` | (Opcional) Base URL de una API propia si utilizas `lib/api.ts`. |
 | `API_PUBLIC_TOKEN` | (Opcional) Token Bearer público para las peticiones anteriores. |
@@ -89,6 +91,13 @@ La aplicación se levanta en `http://localhost:3000`. Las rutas públicas (home,
 | `npm run build` | Genera el build de producción (`.next`). |
 | `npm run start` | Sirve el build generado. |
 | `npm run lint` | Ejecuta el wrapper que intenta resolver `next lint`; si la dependencia `eslint-config-next` no está instalada localmente, el script finaliza sin error (el pipeline de CI la instala automáticamente). |
+
+### Actualización automática de estados de membresía
+
+- El endpoint protegido `/api/cron/memberships/status` marca automáticamente como **expiradas** las membresías cuya `end_date` ya pasó y re-activa aquellas que vuelven a quedar vigentes.
+- Configura la variable `MEMBERSHIP_STATUS_CRON_SECRET` (o alternativamente `CRON_SECRET`) y agenda una tarea diaria en tu plataforma (Vercel Cron Jobs, GitHub Actions, Supabase Scheduler, etc.) que invoque `POST https://tu-dominio/api/cron/memberships/status` con el encabezado `Authorization: Bearer <secreto>` o el query param `?token=<secreto>`.
+- (Opcional) Define `MEMBERSHIP_STATUS_TIMEZONE` con la zona horaria local del gimnasio (por ejemplo `America/Santiago`) para que el corte diario ocurra en horario local.
+- También puedes lanzar la sincronización manualmente desde `/admin/athletes` con el botón **Actualizar estados**, ideal para reflejar cambios inmediatos después de editar planes.
 
 ## Estructura relevante
 ```
