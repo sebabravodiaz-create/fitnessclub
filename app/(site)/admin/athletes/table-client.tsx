@@ -15,7 +15,7 @@ type AthleteRow = {
   memberships: EmbeddedMembership[] | null
 }
 
-export default function AthletesClient() {
+export default function AthletesClient({ reloadSignal = 0 }: { reloadSignal?: number }) {
   const [rows, setRows] = useState<AthleteRow[]>([])
   const [q, setQ] = useState('')
   const [loading, setLoading] = useState(false)
@@ -73,7 +73,7 @@ export default function AthletesClient() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [reloadSignal])
 
   return (
     <div className="grid gap-4">

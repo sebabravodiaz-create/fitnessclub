@@ -1,7 +1,9 @@
 // lib/supabase/service-role.ts
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-type ServiceRoleClient = ReturnType<typeof createClient>;
+import type { Database } from "./types";
+
+type ServiceRoleClient = SupabaseClient<Database>;
 
 export type ServiceRoleConfig = {
   url: string;
@@ -36,7 +38,7 @@ export function getServiceRoleClient(
   }
 
   if (!client) {
-    client = createClient(config.url, config.serviceKey, {
+    client = createClient<Database>(config.url, config.serviceKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
