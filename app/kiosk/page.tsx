@@ -6,7 +6,7 @@ type AccessResult = {
   uid: string
   membership?: string
   endDate?: string
-  status: 'allowed' | 'expired' | 'unknown_card'
+  status: 'allowed' | 'expired' | 'unknown_card' | 'validation_error'
   photoUrl?: string | null
 }
 
@@ -136,21 +136,53 @@ export default function KioskPage() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [mounted])
 
+  function getValidationMessage(reason?: string) {
+    if (!reason) return ''
+    if (reason.startsWith('length_mismatch')) {
+      const [, length] = reason.split(':')
+      return `Largo inválido (${length ?? '?'}/10)`
+    }
+    if (reason === 'invalid_characters') return 'Formato inválido'
+    if (reason === 'empty_value') return 'Número vacío'
+    if (reason === 'not_found_in_db') return 'Tarjeta no registrada'
+    return reason
+  }
+
   async function validate(cardUID: string) {
-    const cleanedUID = cardUID.replace(/^0+/, '')
-    setLastUID(cleanedUID)
+    const normalizedUID = cardUID.trim()
+    setLastUID(normalizedUID)
     setMessage('Validando...')
     setStatus('idle')
     setLastEndDate('')
     setLastPhotoUrl('')
 
     try {
-      const res = await fetch('/api/access/validate', {
+      const res = await fetch('/api/kiosk/read', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardUID: cleanedUID }),
+        body: JSON.stringify({ cardUID: normalizedUID }),
       })
       const data = await res.json()
+
+      if (data.result === 'validation_error') {
+        setStatus('fail')
+        const detail = getValidationMessage(data.validation?.reason)
+        setMessage(`❌ ERROR DE VALIDACIÓN\nUID: ${data.uid || normalizedUID}${detail ? `\n${detail}` : ''}`)
+        setLastEndDate('')
+        setLastPhotoUrl('')
+        addToHistory({
+          name: 'Error de validación',
+          uid: data.uid || normalizedUID,
+          membership: 'N/A',
+          status: 'validation_error',
+          photoUrl: null,
+        })
+        return
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Error de validación')
+      }
 
       if (data.ok && data.result === 'allowed') {
         setStatus('ok')
@@ -196,7 +228,7 @@ export default function KioskPage() {
       }
     } catch {
       setStatus('fail')
-      setMessage(`Error de validación\nUID: ${cleanedUID}`)
+      setMessage(`Error de validación\nUID: ${normalizedUID}`)
       setLastPhotoUrl('')
     } finally {
       setTimeout(() => {
