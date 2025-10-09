@@ -8,6 +8,7 @@ Aplicación web construida con Next.js 14 y Supabase para la gestión integral d
 - [Requisitos previos](#requisitos-previos)
 - [Configuración de Supabase](#configuración-de-supabase)
 - [Variables de entorno](#variables-de-entorno)
+- [Sistema de logs de validaciones de tarjeta](#sistema-de-logs-de-validaciones-de-tarjeta)
 - [Instalación y ejecución local](#instalación-y-ejecución-local)
 - [Scripts disponibles](#scripts-disponibles)
 - [Estructura relevante](#estructura-relevante)
@@ -32,6 +33,7 @@ Aplicación web construida con Next.js 14 y Supabase para la gestión integral d
 
 ### APIs y herramientas internas
 - Endpoint `/api/access/validate` para validar accesos por tarjeta utilizando la `SUPABASE_SERVICE_ROLE_KEY`.
+- Endpoint `/api/kiosk/read` que centraliza la lectura del kiosk, aplica validaciones de formato y registra eventos diarios cuando el logging está habilitado.
 - Ruta `/api/debug/cards` que ayuda a depurar tarjetas registradas.
 - Cliente de Supabase diferenciado para entornos de servidor y navegador (`lib/supabase`).
 
@@ -69,6 +71,22 @@ Copia `.env.example` a `.env.local` y completa según el entorno.
 | `API_PUBLIC_TOKEN` | (Opcional) Token Bearer público para las peticiones anteriores. |
 | `API_ADMIN_TOKEN` | (Opcional) Token administrador para operaciones privilegiadas en la API. |
 | `API_AUTH_MODE` | (Opcional) Modo de autenticación para la API (`supabase`, etc.). |
+| `ENABLE_LOGS` | Activa la escritura de bitácoras diarias (`true`/`false`, por defecto deshabilitado). |
+
+## Sistema de logs de validaciones de tarjeta
+
+Cuando `ENABLE_LOGS=true`, el backend registra cada lectura del kiosk en archivos diarios ubicados en `logs/YYYY-MM-DD.log`. Cada línea sigue el formato:
+
+```
+[YYYY-MM-DD HH:MM:SS] CARD_NUMBER ACTION STATUS DETAILS
+```
+
+- `CARD_NUMBER`: número completo recibido (se conserva el padding con ceros a la izquierda; si falta se reemplaza por `<unknown-card>`).
+- `ACTION`: `READ` para la captura inicial y `VALIDATE` para el resultado final.
+- `STATUS`: `OK`, `VALIDATION_ERROR`, `UNRECOGNIZED` o `ERROR` según el escenario.
+- `DETAILS`: motivo específico (`length_mismatch:9`, `not_found_in_db`, etc.).
+
+Los archivos se crean automáticamente (incluyendo la carpeta `logs/`) al primer evento del día. Puedes desactivar el registro omitiendo o configurando en `false` la variable `ENABLE_LOGS`.
 
 Guarda los valores sensibles únicamente en `.env.local` (local) o en los secret managers de tu proveedor en producción.
 
