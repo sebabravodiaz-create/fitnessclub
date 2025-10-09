@@ -92,6 +92,25 @@ La aplicación se levanta en `http://localhost:3000`. Las rutas públicas (home,
 | `npm run start` | Sirve el build generado. |
 | `npm run lint` | Ejecuta el wrapper que intenta resolver `next lint`; si la dependencia `eslint-config-next` no está instalada localmente, el script finaliza sin error (el pipeline de CI la instala automáticamente). |
 
+## 📜 Sistema de Logs de la API
+Este proyecto genera automáticamente archivos de log diarios en la carpeta `logs/`.
+Cada archivo contiene el registro detallado de todas las solicitudes a la API.
+Formato de línea: `[YYYY-MM-DD HH:MM:SS] METHOD PATH STATUS_CODE MENSAJE`
+
+### Activación y configuración
+- Define la variable de entorno `ENABLE_LOGS=true` para habilitar el registro en cualquier entorno (desarrollo o producción).
+- Establece `ENABLE_LOGS=false` (o déjala sin definir) para desactivar la escritura de logs.
+- Opcionalmente puedes personalizar la ruta donde se guardan los archivos usando `LOGS_DIR=/ruta/personalizada`; por defecto se utiliza `logs/` en la raíz del proyecto.
+
+### Pruebas del sistema de logs
+Ejecuta la suite de pruebas dedicada con:
+
+```bash
+npm test
+```
+
+Los tests verifican la creación diaria de archivos, el formato de cada entrada, la separación por día y el comportamiento del middleware de logging cuando maneja solicitudes reales y errores simulados.
+
 ### Actualización automática de estados de membresía
 
 - El endpoint protegido `/api/cron/memberships/status` marca automáticamente como **expiradas** las membresías cuya `end_date` ya pasó y re-activa aquellas que vuelven a quedar vigentes.

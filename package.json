@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "node scripts/run-lint.cjs"
+    "lint": "node scripts/run-lint.cjs",
+    "test": "node scripts/run-tests.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { withApiLogging } from '@/lib/logger'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -45,7 +46,7 @@ function parseDateRange(from?: string | null, to?: string | null) {
 }
 
 // GET /api/admin/reports/logs/membership-audit?from=YYYY-MM-DD&to=YYYY-MM-DD&limit=10000
-export async function GET(req: NextRequest) {
+async function handleGet(req: NextRequest) {
   try {
     const supabase = getServerClient()
     const url = new URL(req.url)
@@ -159,3 +160,14 @@ export async function GET(req: NextRequest) {
     })
   }
 }
+
+export const GET = withApiLogging(handleGet, {
+  successMessage: ({ response }) =>
+    response.ok
+      ? 'Membership audit report generated successfully'
+      : `Membership audit report returned status ${response.status}`,
+  errorMessage: ({ error }) =>
+    error instanceof Error
+      ? `Failed to generate membership audit report: ${error.message}`
+      : `Failed to generate membership audit report: ${String(error)}`,
+})

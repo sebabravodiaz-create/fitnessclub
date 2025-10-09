@@ -1,6 +1,7 @@
 // app/api/cron/memberships/status/route.ts
 import { NextRequest } from 'next/server'
 import { refreshMembershipStatuses } from '@/lib/memberships/status'
+import { withApiLogging } from '@/lib/logger'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -56,10 +57,17 @@ async function handler(req: NextRequest): Promise<Response> {
   }
 }
 
-export function GET(req: NextRequest): HandlerResult {
-  return handler(req)
-}
+const loggedHandler = withApiLogging<void>(handler, {
+  successMessage: ({ response }) =>
+    response.ok
+      ? 'Membership status cron executed successfully'
+      : `Membership status cron responded with status ${response.status}`,
+  errorMessage: ({ error }) =>
+    error instanceof Error
+      ? `Membership status cron failed: ${error.message}`
+      : `Membership status cron failed: ${String(error)}`,
+})
 
-export function POST(req: NextRequest): HandlerResult {
-  return handler(req)
-}
+export const GET = (req: NextRequest): Promise<Response> => loggedHandler(req, undefined)
+
+export const POST = (req: NextRequest): Promise<Response> => loggedHandler(req, undefined)

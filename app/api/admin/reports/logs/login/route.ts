@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { withApiLogging } from '@/lib/logger'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -42,7 +43,7 @@ function parseDateRange(from?: string | null, to?: string | null) {
 }
 
 // GET /api/admin/reports/logs/login?from=YYYY-MM-DD&to=YYYY-MM-DD&limit=10000
-export async function GET(req: NextRequest) {
+async function handleGet(req: NextRequest) {
   try {
     const supabase = getServerClient()
     const url = new URL(req.url)
@@ -102,3 +103,14 @@ export async function GET(req: NextRequest) {
     })
   }
 }
+
+export const GET = withApiLogging(handleGet, {
+  successMessage: ({ response }) =>
+    response.ok
+      ? 'Login log report generated successfully'
+      : `Login log report returned status ${response.status}`,
+  errorMessage: ({ error }) =>
+    error instanceof Error
+      ? `Failed to generate login log report: ${error.message}`
+      : `Failed to generate login log report: ${String(error)}`,
+})

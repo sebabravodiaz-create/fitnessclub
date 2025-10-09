@@ -1,6 +1,7 @@
 // app/api/admin/reports/summary/route.ts
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { withApiLogging } from '@/lib/logger'
 
 type AccessStatus = 'allowed' | 'denied' | 'expired' | 'unknown_card'
 
@@ -48,7 +49,7 @@ function parseDateRange(from?: string | null, to?: string | null) {
 }
 
 // GET /api/admin/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
-export async function GET(req: NextRequest) {
+async function handleGet(req: NextRequest) {
   try {
     const supabase = getServerClient()
     const url = new URL(req.url)
@@ -132,3 +133,14 @@ export async function GET(req: NextRequest) {
     })
   }
 }
+
+export const GET = withApiLogging(handleGet, {
+  successMessage: ({ response }) =>
+    response.ok
+      ? 'Admin summary report generated successfully'
+      : `Admin summary report returned status ${response.status}`,
+  errorMessage: ({ error }) =>
+    error instanceof Error
+      ? `Failed to generate admin summary report: ${error.message}`
+      : `Failed to generate admin summary report: ${String(error)}`,
+})

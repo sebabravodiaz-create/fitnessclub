@@ -2,6 +2,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { ATHLETE_PHOTOS_BUCKET } from '@/lib/athletePhotos'
+import { withApiLogging } from '@/lib/logger'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -35,7 +36,7 @@ function todayUTCDateOnly(): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
 }
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   try {
     const supabase = getServerClient()
     const body = await req.json().catch(() => ({} as any))
@@ -229,3 +230,12 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: false, error: err?.message ?? 'Unexpected error' }, { status: 500 })
   }
 }
+
+export const POST = withApiLogging(handlePost, {
+  successMessage: ({ response }) =>
+    response.ok ? 'Access validation succeeded' : `Access validation responded with status ${response.status}`,
+  errorMessage: ({ error }) =>
+    error instanceof Error
+      ? `Access validation failed: ${error.message}`
+      : `Access validation failed: ${String(error)}`,
+})

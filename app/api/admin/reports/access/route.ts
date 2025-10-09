@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { withApiLogging } from '@/lib/logger'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -54,7 +55,7 @@ const STATUS_FILTERS: Record<string, string | string[]> = {
 }
 
 // GET /api/admin/reports/access?status=ok|nok|denied|expired|unknown_card&from=YYYY-MM-DD&to=YYYY-MM-DD&limit=5000
-export async function GET(req: NextRequest) {
+async function handleGet(req: NextRequest) {
   try {
     const supabase = getServerClient()
     const url = new URL(req.url)
@@ -181,3 +182,14 @@ export async function GET(req: NextRequest) {
     })
   }
 }
+
+export const GET = withApiLogging(handleGet, {
+  successMessage: ({ response }) =>
+    response.ok
+      ? 'Access report generated successfully'
+      : `Access report returned status ${response.status}`,
+  errorMessage: ({ error }) =>
+    error instanceof Error
+      ? `Failed to generate access report: ${error.message}`
+      : `Failed to generate access report: ${String(error)}`,
+})

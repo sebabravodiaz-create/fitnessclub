@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getServiceRoleClient, getServiceRoleConfig } from '@/lib/supabase/service-role'
+import { withApiLogging } from '@/lib/logger'
 
-export async function GET() {
+async function handleGet() {
   try {
     const config = getServiceRoleConfig()
 
@@ -42,3 +43,12 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 })
   }
 }
+
+export const GET = withApiLogging(handleGet, {
+  successMessage: ({ response }) =>
+    response.ok ? 'Debug cards endpoint responded successfully' : `Debug cards endpoint returned status ${response.status}`,
+  errorMessage: ({ error }) =>
+    error instanceof Error
+      ? `Debug cards endpoint failed: ${error.message}`
+      : `Debug cards endpoint failed: ${String(error)}`,
+})

@@ -1,6 +1,7 @@
 // app/api/admin/reports/memberships/route.ts
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { withApiLogging } from '@/lib/logger'
 
 type Row = {
   socio: string
@@ -42,7 +43,7 @@ function parseDateRange(from?: string | null, to?: string | null) {
 }
 
 // GET /api/admin/reports/memberships?from=YYYY-MM-DD&to=YYYY-MM-DD&date_field=created_at|start_date|end_date&limit=10000
-export async function GET(req: NextRequest) {
+async function handleGet(req: NextRequest) {
   try {
     const supabase = getServerClient()
     const url = new URL(req.url)
@@ -134,3 +135,14 @@ export async function GET(req: NextRequest) {
     })
   }
 }
+
+export const GET = withApiLogging(handleGet, {
+  successMessage: ({ response }) =>
+    response.ok
+      ? 'Membership report generated successfully'
+      : `Membership report returned status ${response.status}`,
+  errorMessage: ({ error }) =>
+    error instanceof Error
+      ? `Failed to generate membership report: ${error.message}`
+      : `Failed to generate membership report: ${String(error)}`,
+})

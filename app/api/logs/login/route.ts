@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { withApiLogging } from '@/lib/logger'
 
 type Body = {
   email?: string
@@ -18,7 +19,7 @@ function getServiceClient() {
   return createClient(url, key, { auth: { persistSession: false } })
 }
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as Body
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : null
@@ -54,3 +55,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 })
   }
 }
+
+export const POST = withApiLogging(handlePost, {
+  successMessage: ({ response }) =>
+    response.ok ? 'Login event logged successfully' : `Login event logging responded with status ${response.status}`,
+  errorMessage: ({ error }) =>
+    error instanceof Error
+      ? `Login event logging failed: ${error.message}`
+      : `Login event logging failed: ${String(error)}`,
+})

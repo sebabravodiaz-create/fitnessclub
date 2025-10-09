@@ -4,6 +4,7 @@
 # build
 /.next
 /out
+.test-dist
 
 # env
 .env
