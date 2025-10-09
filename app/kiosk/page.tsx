@@ -19,6 +19,26 @@ function formatDate(dateStr?: string) {
   })
 }
 
+type RfidRecoveryConfig = {
+  selector: string | null
+  delay: number
+  maxRetries: number
+  enabled: boolean
+}
+
+type RfidRecoveryHelper = {
+  enable: () => void
+  disable: () => void
+  update: (config: Partial<RfidRecoveryConfig>) => void
+  getConfig: () => RfidRecoveryConfig
+}
+
+declare global {
+  interface Window {
+    rfidRecoveryHelper?: RfidRecoveryHelper
+  }
+}
+
 const PLACEHOLDER_PHOTO = '/images/athlete-placeholder.svg'
 
 export default function KioskPage() {
@@ -38,6 +58,45 @@ export default function KioskPage() {
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // 2b) Carga y configuración del helper RFID que presiona ArrowRight tras Enter
+  useEffect(() => {
+    if (!mounted) return
+
+    const applyHelperConfig = () => {
+      const helper = window.rfidRecoveryHelper
+      if (!helper || !inputRef.current) return
+      helper.update({ selector: '#kiosk-rfid-input' })
+      helper.enable()
+    }
+
+    let scriptElement = document.querySelector<HTMLScriptElement>('script[data-rfid-recovery]')
+    let appended = false
+
+    if (!scriptElement) {
+      scriptElement = document.createElement('script')
+      scriptElement.src = '/scripts/rfid-keyboard-recovery.js'
+      scriptElement.async = false
+      scriptElement.dataset.rfidRecovery = 'true'
+      scriptElement.addEventListener('load', applyHelperConfig)
+      document.head.appendChild(scriptElement)
+      appended = true
+    } else {
+      scriptElement.addEventListener('load', applyHelperConfig)
+    }
+
+    if (window.rfidRecoveryHelper) {
+      applyHelperConfig()
+    }
+
+    return () => {
+      scriptElement?.removeEventListener('load', applyHelperConfig)
+      window.rfidRecoveryHelper?.disable()
+      if (appended && scriptElement?.parentNode) {
+        scriptElement.parentNode.removeChild(scriptElement)
+      }
+    }
+  }, [mounted])
 
   // 3) Foco y listeners solo cuando ya hay window
   useEffect(() => {
@@ -197,6 +256,7 @@ export default function KioskPage() {
           )}
           <input
             ref={inputRef}
+            id="kiosk-rfid-input"
             className="opacity-0 absolute pointer-events-none"
             inputMode="none"
             autoCapitalize="off"
