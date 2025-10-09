@@ -1,7 +1,12 @@
 // app/api/access/validate/route.ts
 import { NextRequest } from 'next/server'
 import { validateCardAccess } from '@/lib/access/validateCardAccess'
-import { CARD_UID_LENGTH, normalizeCardUID, validateCardUIDFormat } from '@/lib/kiosk/cardValidation'
+import {
+  CARD_UID_LENGTH,
+  canonicalizeCardUID,
+  normalizeCardUID,
+  validateCardUIDFormat,
+} from '@/lib/kiosk/cardValidation'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -47,7 +52,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const response = await validateCardAccess(normalizedUID, rawUID)
+    const canonicalUID = canonicalizeCardUID(normalizedUID)
+    const response = await validateCardAccess(canonicalUID, rawUID, { normalizedUID })
     return Response.json(response)
   } catch (err: any) {
     console.error('[access.validate] error:', err)

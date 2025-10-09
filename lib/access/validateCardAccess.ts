@@ -59,7 +59,11 @@ function todayUTCDateOnly(): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
 }
 
-export async function validateCardAccess(cardUID: string, rawUID: string): Promise<AccessValidation> {
+export async function validateCardAccess(
+  cardUID: string,
+  rawUID: string,
+  options?: { normalizedUID?: string },
+): Promise<AccessValidation> {
   const supabase = getServerClient()
   const today = todayUTCDateOnly()
 
@@ -79,6 +83,8 @@ export async function validateCardAccess(cardUID: string, rawUID: string): Promi
     | null = null
 
   let memberships: { plan?: string | null; status?: string | null; start_date?: string | null; end_date?: string | null }[] = []
+
+  const normalizedUID = options?.normalizedUID ?? cardUID
 
   let validation: AccessValidation['validation'] = {
     status: 'OK',
@@ -235,7 +241,7 @@ export async function validateCardAccess(cardUID: string, rawUID: string): Promi
     access_id: inserted?.id ?? null,
     ts: inserted?.ts ?? payload.ts,
     result,
-    uid: cardUID,
+    uid: normalizedUID,
     raw_uid: rawUID,
     athlete,
     membership,
